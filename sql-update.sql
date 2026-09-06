@@ -157,3 +157,47 @@ ALTER TABLE `dockerteststep` CHANGE `teststepid` `teststepid` INT(11) NOT NULL A
 ALTER TABLE `testscounts` CHANGE `test_id` `test_id` INT(11) NOT NULL, CHANGE `user_uid` `user_uid` INT(11) NOT NULL; 
 
 ALTER TABLE `submissions_tasknumbers` DROP FOREIGN KEY `FK44B4D38D1986B517`; ALTER TABLE `submissions_tasknumbers` ADD CONSTRAINT `FK44B4D38D1986B517` FOREIGN KEY (`participationid`) REFERENCES `participations`(`id`) ON DELETE CASCADE ON UPDATE RESTRICT;
+
+-- Antwortklassen: Stammdaten (pro Aufgabe, vom Advisor angelegt)
+CREATE TABLE IF NOT EXISTS `answerclasses` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `taskid` int(11) NOT NULL,
+  `title` varchar(255) NOT NULL DEFAULT '',
+  `description` text DEFAULT NULL,
+  `detectionType` varchar(50) NOT NULL DEFAULT '',
+  `timesRunnableByStudents` int(11) NOT NULL DEFAULT 3,
+  `giveDetailsToStudents` tinyint(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  CONSTRAINT `FK_answerclasses_task` FOREIGN KEY (`taskid`) REFERENCES `tasks` (`taskid`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+-- Antwortklassen: Run-Counts für Button „Antwortklassen einfordern“ (pro Student pro Aufgabe)
+CREATE TABLE IF NOT EXISTS `answerclassruncounts` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `timesExecuted` int(11) NOT NULL DEFAULT 0,
+  `taskid` int(11) NOT NULL,
+  `userid` int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UQ_answerclassruncounts_task_user` (`taskid`, `userid`),
+  CONSTRAINT `FK_answerclassruncounts_task` FOREIGN KEY (`taskid`) REFERENCES `tasks` (`taskid`) ON DELETE CASCADE ON UPDATE RESTRICT,
+  CONSTRAINT `FK_answerclassruncounts_user` FOREIGN KEY (`userid`) REFERENCES `users` (`uid`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+-- Antwortklassen: Ergebnisse pro Antwortklasse und Abgabe (Re-Run überschreibt; UNIQUE)
+-- status: MATCHED | NOT_MATCHED | SKIPPED | PENDING
+-- source: STUDENT_PREVIEW | AUTOMATIC | MANUAL
+CREATE TABLE IF NOT EXISTS `answerclassresults` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `answerclassid` int(11) NOT NULL,
+  `submissionid` int(11) NOT NULL,
+  `status` varchar(32) NOT NULL,
+  `details` longtext NOT NULL,
+  `checkedAt` datetime NOT NULL,
+  `source` varchar(32) NOT NULL,
+  `evaluatedBy` int(11) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UQ_answerclassresults_ac_submission` (`answerclassid`, `submissionid`),
+  CONSTRAINT `FK_answerclassresults_answerclass` FOREIGN KEY (`answerclassid`) REFERENCES `answerclasses` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
+  CONSTRAINT `FK_answerclassresults_submission` FOREIGN KEY (`submissionid`) REFERENCES `submissions` (`submissionid`) ON DELETE CASCADE ON UPDATE RESTRICT,
+  CONSTRAINT `FK_answerclassresults_evaluatedBy` FOREIGN KEY (`evaluatedBy`) REFERENCES `users` (`uid`) ON DELETE SET NULL ON UPDATE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;

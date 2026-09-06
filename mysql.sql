@@ -455,6 +455,66 @@ CREATE TABLE IF NOT EXISTS `testscounts` (
 -- --------------------------------------------------------
 
 --
+-- Tabellenstruktur für Tabelle `answerclassruncounts`
+--
+
+DROP TABLE IF EXISTS `answerclassruncounts`;
+CREATE TABLE IF NOT EXISTS `answerclassruncounts` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `timesExecuted` int(11) NOT NULL DEFAULT 0,
+  `taskid` int(11) NOT NULL,
+  `userid` int(11) NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UQ_answerclassruncounts_task_user` (`taskid`, `userid`),
+  KEY `FK_answerclassruncounts_user` (`userid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+-- --------------------------------------------------------
+
+--
+-- Tabellenstruktur für Tabelle `answerclasses`
+--
+
+DROP TABLE IF EXISTS `answerclasses`;
+CREATE TABLE IF NOT EXISTS `answerclasses` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `taskid` int(11) NOT NULL,
+  `title` varchar(255) NOT NULL DEFAULT '',
+  `description` text DEFAULT NULL,
+  `detectionType` varchar(50) NOT NULL DEFAULT '',
+  `timesRunnableByStudents` int(11) NOT NULL DEFAULT 3,
+  `giveDetailsToStudents` tinyint(1) NOT NULL DEFAULT 1,
+  PRIMARY KEY (`id`),
+  KEY `FK_answerclasses_task` (`taskid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+-- --------------------------------------------------------
+
+--
+-- Tabellenstruktur für Tabelle `answerclassresults`
+-- status: MATCHED | NOT_MATCHED | SKIPPED | PENDING
+-- source: STUDENT_PREVIEW | AUTOMATIC | MANUAL
+--
+
+DROP TABLE IF EXISTS `answerclassresults`;
+CREATE TABLE IF NOT EXISTS `answerclassresults` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `answerclassid` int(11) NOT NULL,
+  `submissionid` int(11) NOT NULL,
+  `status` varchar(32) NOT NULL,
+  `details` longtext NOT NULL,
+  `checkedAt` datetime NOT NULL,
+  `source` varchar(32) NOT NULL,
+  `evaluatedBy` int(11) DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `UQ_answerclassresults_ac_submission` (`answerclassid`, `submissionid`),
+  KEY `FK_answerclassresults_submission` (`submissionid`),
+  KEY `FK_answerclassresults_evaluatedBy` (`evaluatedBy`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+-- --------------------------------------------------------
+
+--
 -- Tabellenstruktur für Tabelle `users`
 --
 
@@ -626,6 +686,27 @@ ALTER TABLE `tests`
 ALTER TABLE `testscounts`
   ADD CONSTRAINT `FKF81042A58DBEBD80` FOREIGN KEY (`test_id`) REFERENCES `tests` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `FKF81042A5D2AB5AAD` FOREIGN KEY (`user_uid`) REFERENCES `users` (`uid`) ON DELETE CASCADE;
+
+--
+-- Constraints der Tabelle `answerclassruncounts`
+--
+ALTER TABLE `answerclassruncounts`
+  ADD CONSTRAINT `FK_answerclassruncounts_task` FOREIGN KEY (`taskid`) REFERENCES `tasks` (`taskid`) ON DELETE CASCADE,
+  ADD CONSTRAINT `FK_answerclassruncounts_user` FOREIGN KEY (`userid`) REFERENCES `users` (`uid`) ON DELETE CASCADE;
+
+--
+-- Constraints der Tabelle `answerclasses`
+--
+ALTER TABLE `answerclasses`
+  ADD CONSTRAINT `FK_answerclasses_task` FOREIGN KEY (`taskid`) REFERENCES `tasks` (`taskid`) ON DELETE CASCADE;
+
+--
+-- Constraints der Tabelle `answerclassresults`
+--
+ALTER TABLE `answerclassresults`
+  ADD CONSTRAINT `FK_answerclassresults_answerclass` FOREIGN KEY (`answerclassid`) REFERENCES `answerclasses` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `FK_answerclassresults_submission` FOREIGN KEY (`submissionid`) REFERENCES `submissions` (`submissionid`) ON DELETE CASCADE,
+  ADD CONSTRAINT `FK_answerclassresults_evaluatedBy` FOREIGN KEY (`evaluatedBy`) REFERENCES `users` (`uid`) ON DELETE SET NULL;
 
 -- Manual additions
 ALTER TABLE `groups_tutors` DROP FOREIGN KEY `FK8EAE7CC842D82B98`; ALTER TABLE `groups_tutors` ADD CONSTRAINT `FK8EAE7CC842D82B98` FOREIGN KEY (`tutors_id`) REFERENCES `participations`(`id`) ON DELETE CASCADE; 
