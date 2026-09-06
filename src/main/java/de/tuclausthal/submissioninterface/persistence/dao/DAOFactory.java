@@ -20,6 +20,9 @@ package de.tuclausthal.submissioninterface.persistence.dao;
 
 import org.hibernate.Session;
 
+import de.tuclausthal.submissioninterface.persistence.dao.impl.AnswerClassDAO;
+import de.tuclausthal.submissioninterface.persistence.dao.impl.AnswerClassResultDAO;
+import de.tuclausthal.submissioninterface.persistence.dao.impl.AnswerClassRunCountDAO;
 import de.tuclausthal.submissioninterface.persistence.dao.impl.GroupDAO;
 import de.tuclausthal.submissioninterface.persistence.dao.impl.LectureDAO;
 import de.tuclausthal.submissioninterface.persistence.dao.impl.MCOptionDAO;
@@ -169,5 +172,17 @@ public class DAOFactory {
 
 	public static MCOptionDAOIf MCOptionDAOIf(Session session) {
 		return new MCOptionDAO(session);
+	}
+
+	public static AnswerClassDAOIf AnswerClassDAOIf(Session session) {
+		return new AnswerClassDAO(session);
+	}
+
+	public static AnswerClassResultDAOIf AnswerClassResultDAOIf(Session session) {
+		return new AnswerClassResultDAO(session);
+	}
+
+	public static AnswerClassRunCountDAOIf AnswerClassRunCountDAOIf(Session session) {
+		return new AnswerClassRunCountDAO(session);
 	}
 }
