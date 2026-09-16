@@ -22,28 +22,37 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import java.util.List;
-
 import org.hibernate.Transaction;
 import org.junit.jupiter.api.Test;
 
 import de.tuclausthal.submissioninterface.BasicTest;
 import de.tuclausthal.submissioninterface.GATEDBTest;
-import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClass;
 import de.tuclausthal.submissioninterface.persistence.datamodel.Task;
 import de.tuclausthal.submissioninterface.persistence.datamodel.User;
 
 @GATEDBTest
 class AnswerClassRunCountDAOIfTest extends BasicTest {
 	@Test
+	void testCanStillRunXTimesNoneConfigured() {
+		assertEquals(0, DAOFactory.AnswerClassRunCountDAOIf(session).canStillRunXTimes(DAOFactory.TaskDAOIf(session).getTask(1), DAOFactory.UserDAOIf(session).getUser(3)));
+	}
+
+	@Test
+	void testCanStillRunXTimesUnused() {
+		assertEquals(2, DAOFactory.AnswerClassRunCountDAOIf(session).canStillRunXTimes(DAOFactory.TaskDAOIf(session).getTask(3), DAOFactory.UserDAOIf(session).getUser(3)));
+	}
+
+	@Test
+	void testCanStillRunXTimesUsedAll() {
+		assertEquals(0, DAOFactory.AnswerClassRunCountDAOIf(session).canStillRunXTimes(DAOFactory.TaskDAOIf(session).getTask(3), DAOFactory.UserDAOIf(session).getUser(8)));
+	}
+
+	@Test
 	void testIncrementUntilLimit() {
 		Transaction tx = session.beginTransaction();
-		Task task = DAOFactory.TaskDAOIf(session).getTask(2);
-		User user = DAOFactory.UserDAOIf(session).getUser(2);
-		List<AnswerClass> answerClasses = DAOFactory.AnswerClassDAOIf(session).getAnswerClassesForTask(task);
-		assertFalse(answerClasses.isEmpty());
-		int limit = answerClasses.get(0).getTimesRunnableByStudents();
-		assertTrue(limit > 0);
+		Task task = DAOFactory.TaskDAOIf(session).getTask(3);
+		User user = DAOFactory.UserDAOIf(session).getUser(5);
+		int limit = 2;
 
 		assertEquals(limit, DAOFactory.AnswerClassRunCountDAOIf(session).canStillRunXTimes(task, user));
 		for (int i = 0; i < limit; i++) {

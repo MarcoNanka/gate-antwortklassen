@@ -32,27 +32,44 @@ import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResul
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResultSource;
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResultStatus;
 import de.tuclausthal.submissioninterface.persistence.datamodel.Submission;
-import de.tuclausthal.submissioninterface.persistence.datamodel.Task;
 import de.tuclausthal.submissioninterface.persistence.datamodel.User;
 
 @GATEDBTest
 class AnswerClassResultDAOIfTest extends BasicTest {
 	@Test
 	void testGetResultNone() {
-		Transaction tx = session.beginTransaction();
-		Task task = DAOFactory.TaskDAOIf(session).getTask(1);
-		AnswerClass answerClass = DAOFactory.AnswerClassDAOIf(session).createAnswerClass(task, "Result Test AC", "", "WHILE_LOOP", 3, true);
-		Submission submission = DAOFactory.SubmissionDAOIf(session).getSubmission(3);
+		AnswerClass answerClass = DAOFactory.AnswerClassDAOIf(session).getAnswerClass(2);
+		Submission submission = DAOFactory.SubmissionDAOIf(session).getSubmission(7);
 		assertNull(DAOFactory.AnswerClassResultDAOIf(session).getResult(answerClass, submission));
-		tx.rollback();
+	}
+
+	@Test
+	void testGetResultMatched() {
+		AnswerClassResult result = DAOFactory.AnswerClassResultDAOIf(session).getResult(DAOFactory.AnswerClassDAOIf(session).getAnswerClass(1), DAOFactory.SubmissionDAOIf(session).getSubmission(3));
+		assertNotNull(result);
+		assertEquals(1, result.getId());
+		assertEquals(AnswerClassResultStatus.MATCHED, result.getStatus());
+		assertEquals("unused variable found", result.getDetails());
+		assertEquals(AnswerClassResultSource.AUTOMATIC, result.getSource());
+		assertNull(result.getEvaluatedBy());
+	}
+
+	@Test
+	void testGetResultManual() {
+		AnswerClassResult result = DAOFactory.AnswerClassResultDAOIf(session).getResult(DAOFactory.AnswerClassDAOIf(session).getAnswerClass(2), DAOFactory.SubmissionDAOIf(session).getSubmission(3));
+		assertNotNull(result);
+		assertEquals(3, result.getId());
+		assertEquals(AnswerClassResultStatus.MATCHED, result.getStatus());
+		assertEquals(AnswerClassResultSource.MANUAL, result.getSource());
+		assertEquals(3, result.getEvaluatedBy().getUid());
 	}
 
 	@Test
 	void testStoreResultAndOverwrite() {
 		Transaction tx = session.beginTransaction();
-		Task task = DAOFactory.TaskDAOIf(session).getTask(1);
-		AnswerClass answerClass = DAOFactory.AnswerClassDAOIf(session).createAnswerClass(task, "Result Overwrite AC", "", "WHILE_LOOP", 3, true);
-		Submission submission = DAOFactory.SubmissionDAOIf(session).getSubmission(3);
+		AnswerClass answerClass = DAOFactory.AnswerClassDAOIf(session).getAnswerClass(2);
+		Submission submission = DAOFactory.SubmissionDAOIf(session).getSubmission(7);
+		assertNull(DAOFactory.AnswerClassResultDAOIf(session).getResult(answerClass, submission));
 
 		DAOFactory.AnswerClassResultDAOIf(session).storeResult(answerClass, submission, AnswerClassResultStatus.MATCHED, "first", AnswerClassResultSource.STUDENT_PREVIEW, null);
 		AnswerClassResult first = DAOFactory.AnswerClassResultDAOIf(session).getResult(answerClass, submission);

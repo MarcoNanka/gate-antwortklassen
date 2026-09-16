@@ -93,6 +93,31 @@ INSERT INTO `mcoptions` (`id`, `correct`, `title`, `taskid`) VALUES
 (4, b'0', 'Wrong 3', 2);
 
 --
+-- Daten für Tabelle `answerclasses`
+-- (Task 3 = Hello World; Task 1/2/4 have none)
+--
+
+INSERT INTO `answerclasses` (`id`, `taskid`, `title`, `description`, `detectionType`, `timesRunnableByStudents`, `giveDetailsToStudents`) VALUES
+(1, 3, 'Code compiles', 'Submission compiles with javac', 'COMPILE_OK', 2, b'1'),
+(2, 3, 'While loop', 'Submission contains a while loop', 'WHILE_LOOP', 2, b'1');
+
+--
+-- Daten für Tabelle `answerclassresults`
+--
+
+INSERT INTO `answerclassresults` (`id`, `answerclassid`, `submissionid`, `status`, `details`, `checkedAt`, `source`, `evaluatedBy`) VALUES
+(1, 1, 3, 'MATCHED', 'unused variable found', '2020-12-21 10:37:12', 'AUTOMATIC', NULL),
+(2, 1, 7, 'NOT_MATCHED', '', '2020-12-21 10:43:46', 'STUDENT_PREVIEW', NULL),
+(3, 2, 3, 'MATCHED', 'while loop present', '2020-12-21 10:37:12', 'MANUAL', 3);
+
+--
+-- Daten für Tabelle `answerclassruncounts`
+--
+
+INSERT INTO `answerclassruncounts` (`id`, `timesExecuted`, `taskid`, `userid`) VALUES
+(1, 2, 3, 8);
+
+--
 -- Daten für Tabelle `participations`
 --
 
