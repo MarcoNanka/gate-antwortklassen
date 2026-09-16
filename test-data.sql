@@ -106,8 +106,8 @@ INSERT INTO `answerclasses` (`id`, `taskid`, `title`, `description`, `detectionT
 --
 
 INSERT INTO `answerclassresults` (`id`, `answerclassid`, `submissionid`, `status`, `details`, `checkedAt`, `source`, `evaluatedBy`) VALUES
-(1, 1, 3, 'MATCHED', 'unused variable found', '2020-12-21 10:37:12', 'AUTOMATIC', NULL),
-(2, 1, 7, 'NOT_MATCHED', '', '2020-12-21 10:43:46', 'STUDENT_PREVIEW', NULL),
+(1, 1, 3, 'MATCHED', 'compiled successfully', '2020-12-21 10:37:12', 'AUTOMATIC', NULL),
+(2, 1, 7, 'NOT_MATCHED', 'compilation failed', '2020-12-21 10:43:46', 'STUDENT_PREVIEW', NULL),
 (3, 2, 3, 'MATCHED', 'while loop present', '2020-12-21 10:37:12', 'MANUAL', 3);
 
 --

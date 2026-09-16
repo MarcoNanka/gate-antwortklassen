@@ -49,7 +49,7 @@ class AnswerClassResultDAOIfTest extends BasicTest {
 		assertNotNull(result);
 		assertEquals(1, result.getId());
 		assertEquals(AnswerClassResultStatus.MATCHED, result.getStatus());
-		assertEquals("unused variable found", result.getDetails());
+		assertEquals("compiled successfully", result.getDetails());
 		assertEquals(AnswerClassResultSource.AUTOMATIC, result.getSource());
 		assertNull(result.getEvaluatedBy());
 	}

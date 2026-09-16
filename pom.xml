@@ -155,6 +155,13 @@
 			<version>20090514</version>
 		</dependency>
 
+		<!-- https://mvnrepository.com/artifact/com.github.javaparser/javaparser-core -->
+		<dependency>
+			<groupId>com.github.javaparser</groupId>
+			<artifactId>javaparser-core</artifactId>
+			<version>3.27.1</version>
+		</dependency>
+
 		<!-- https://mvnrepository.com/artifact/org.junit.jupiter/junit-jupiter-api -->
 		<dependency>
 			<groupId>org.junit.jupiter</groupId>
