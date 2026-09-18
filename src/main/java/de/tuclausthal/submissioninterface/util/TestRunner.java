@@ -24,6 +24,7 @@ import java.nio.file.Path;
 
 import org.hibernate.Session;
 
+import de.tuclausthal.submissioninterface.answerclasses.AnswerClassBatchRunner;
 import de.tuclausthal.submissioninterface.dupecheck.DupeCheck;
 import de.tuclausthal.submissioninterface.persistence.dao.DAOFactory;
 import de.tuclausthal.submissioninterface.persistence.datamodel.SimilarityTest;
@@ -70,5 +71,11 @@ public class TestRunner {
 		}
 		session.close();
 		TestExecutor.shutdown();
+
+		// Antwortklassen: post-deadline batch run (trigger BATCH, source AUTOMATIC); sequential
+		// on purpose, see AnswerClassBatchRunner
+		session = HibernateSessionHelper.getSessionFactory().openSession();
+		AnswerClassBatchRunner.runBatch(session, dataPath);
+		session.close();
 	}
 }

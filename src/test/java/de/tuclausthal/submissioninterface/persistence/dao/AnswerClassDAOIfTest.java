@@ -94,4 +94,39 @@ class AnswerClassDAOIfTest extends BasicTest {
 
 		tx.rollback();
 	}
+
+	@Test
+	void testGetAnswerClassLocked() {
+		Transaction tx = session.beginTransaction();
+		AnswerClass answerClass = DAOFactory.AnswerClassDAOIf(session).getAnswerClassLocked(1);
+		assertNotNull(answerClass);
+		assertEquals("Code compiles", answerClass.getTitle());
+		assertNull(DAOFactory.AnswerClassDAOIf(session).getAnswerClassLocked(9999));
+		tx.rollback();
+	}
+
+	@Test
+	void testTakeTaskForAnswerClassBatchTransactedClaimsOverdueTaskAndFlipsNeedsToRun() {
+		// fixture: task 3's answer classes (1 = "Code compiles", 2 = "While loop") both default
+		// to needsToRun=true, and task 3's deadline (2020-12-21) is long past, so the very first
+		// call claims task 3 and flips needsToRun=false for all of its answer classes at once
+		// (one AnswerClassRunner pass evaluates all answer classes of a task together).
+		try {
+			Task claimed = DAOFactory.AnswerClassDAOIf(session).takeTaskForAnswerClassBatchTransacted();
+			assertNotNull(claimed);
+			assertEquals(3, claimed.getTaskid());
+			assertFalse(DAOFactory.AnswerClassDAOIf(session).getAnswerClass(1).isNeedsToRun());
+			assertFalse(DAOFactory.AnswerClassDAOIf(session).getAnswerClass(2).isNeedsToRun());
+
+			// no other task currently has an overdue answer class with needsToRun=true left
+			assertNull(DAOFactory.AnswerClassDAOIf(session).takeTaskForAnswerClassBatchTransacted());
+		} finally {
+			// takeTaskForAnswerClassBatchTransacted() commits its own transaction (like
+			// TestDAOIf#takeTestTransacted()), so restore the fixture for other/later test runs
+			Transaction cleanup = session.beginTransaction();
+			DAOFactory.AnswerClassDAOIf(session).getAnswerClassLocked(1).setNeedsToRun(true);
+			DAOFactory.AnswerClassDAOIf(session).getAnswerClassLocked(2).setNeedsToRun(true);
+			cleanup.commit();
+		}
+	}
 }

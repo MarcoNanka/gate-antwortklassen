@@ -484,6 +484,7 @@ CREATE TABLE IF NOT EXISTS `answerclasses` (
   `detectionType` varchar(50) NOT NULL DEFAULT '',
   `timesRunnableByStudents` int(11) NOT NULL DEFAULT 3,
   `giveDetailsToStudents` tinyint(1) NOT NULL DEFAULT 1,
+  `needsToRun` tinyint(1) NOT NULL DEFAULT 1,
   PRIMARY KEY (`id`),
   KEY `FK_answerclasses_task` (`taskid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;

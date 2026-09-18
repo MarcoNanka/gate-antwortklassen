@@ -71,6 +71,16 @@ public class AnswerClass implements Serializable {
 	@JoinTable(name = "answerclass_prerequisites", joinColumns = @JoinColumn(name = "answerclassid"), inverseJoinColumns = @JoinColumn(name = "prerequisiteid"))
 	@OrderBy("id asc")
 	private Set<AnswerClass> prerequisites = new LinkedHashSet<>();
+	/**
+	 * Batch-queue flag, analogous to {@code Test#needsToRun}: {@code true} means the next
+	 * {@code AnswerClassBatchRunner} pass should (re-)evaluate this answer class's task for all
+	 * of its submissions with {@code PipelineTrigger.BATCH}. Defaults to {@code true} so newly
+	 * created answer classes are picked up automatically; flipped to {@code false} once claimed
+	 * (see {@code AnswerClassDAOIf#takeTaskForAnswerClassBatchTransacted}) and back to
+	 * {@code true} by the advisor "erneut auswerten" action.
+	 */
+	@Column(nullable = false)
+	private boolean needsToRun = true;
 
 	protected AnswerClass() {}
 
@@ -152,6 +162,14 @@ public class AnswerClass implements Serializable {
 
 	public void addPrerequisite(AnswerClass prerequisite) {
 		this.prerequisites.add(prerequisite);
+	}
+
+	public boolean isNeedsToRun() {
+		return needsToRun;
+	}
+
+	public void setNeedsToRun(boolean needsToRun) {
+		this.needsToRun = needsToRun;
 	}
 
 	@Override

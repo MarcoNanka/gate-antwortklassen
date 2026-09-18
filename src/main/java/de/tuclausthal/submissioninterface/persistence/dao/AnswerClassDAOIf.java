@@ -31,7 +31,25 @@ public interface AnswerClassDAOIf {
 
 	AnswerClass getAnswerClass(int id);
 
+	/**
+	 * Like {@link #getAnswerClass(int)}, but with a pessimistic write lock (mirrors
+	 * {@code TestDAOIf#getTestLocked}) — use before mutating (edit/delete) an answer class.
+	 */
+	AnswerClass getAnswerClassLocked(int id);
+
 	List<AnswerClass> getAnswerClassesForTask(Task task);
 
 	void deleteAnswerClass(AnswerClass answerClass);
+
+	/**
+	 * Batch queue analogous to {@code TestDAOIf#takeTestTransacted()}: atomically claims (in its
+	 * own transaction) one {@code Task} that has at least one answer class with
+	 * {@code needsToRun == true} and whose deadline is more than 2 minutes in the past, and
+	 * flips {@code needsToRun} to {@code false} for <b>all</b> of that task's answer classes
+	 * (since one {@code AnswerClassRunner} pass evaluates all of a task's answer classes
+	 * together for a given submission).
+	 *
+	 * @return the claimed task, or {@code null} if no task is currently due
+	 */
+	Task takeTaskForAnswerClassBatchTransacted();
 }
