@@ -518,6 +518,35 @@ public class UtilTest {
 	}
 
 	@Test
+	public void testDirectoryHasFilesNonExisting() throws IOException {
+		assertFalse(Util.directoryHasFiles(Path.of("does-not-exist")));
+	}
+
+	@Test
+	public void testDirectoryHasFilesEmptyDirectory(@TempDir final Path tempDir) throws IOException {
+		assertFalse(Util.directoryHasFiles(tempDir));
+	}
+
+	@Test
+	public void testDirectoryHasFilesOnlyEmptySubDirectories(@TempDir final Path tempDir) throws IOException {
+		Files.createDirectories(tempDir.resolve("subDirectory/SubSubDirectory"));
+		assertFalse(Util.directoryHasFiles(tempDir));
+	}
+
+	@Test
+	public void testDirectoryHasFilesRegularFile() throws IOException {
+		assertTrue(Util.directoryHasFiles(Path.of("src/test/resources/TriangleOutput.java")));
+	}
+
+	@Test
+	public void testDirectoryHasFilesFileInSubDirectory(@TempDir final Path tempDir) throws IOException {
+		final Path subDirectory = tempDir.resolve("subDirectory");
+		Files.createDirectories(subDirectory);
+		Files.copy(Path.of("src/test/resources/TriangleOutput.java"), subDirectory.resolve("a.txt"));
+		assertTrue(Util.directoryHasFiles(tempDir));
+	}
+
+	@Test
 	public void testRecursiveCopyEmptyDirectory(@TempDir final Path tempDir) throws IOException {
 		final Path source = tempDir.resolve("source");
 		final Path destination = tempDir.resolve("destination");

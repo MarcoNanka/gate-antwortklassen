@@ -415,6 +415,27 @@ public final class Util {
 	}
 
 	/**
+	 * Checks whether a path (recursively) contains at least one regular file.
+	 * Used e.g. by the answer-class pipeline to decide if there is anything to evaluate.
+	 * @param path the file/directory to check; a non-existing path counts as having no files
+	 * @return {@code true} if path itself is a regular file, or a directory containing (nested) at least one regular file
+	 * @throws IOException
+	 */
+	public static boolean directoryHasFiles(final Path path) throws IOException {
+		if (!Files.isDirectory(path)) {
+			return Files.isRegularFile(path);
+		}
+		try (DirectoryStream<Path> directoryStream = Files.newDirectoryStream(path)) {
+			for (final Path subFile : directoryStream) {
+				if (directoryHasFiles(subFile)) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/**
 	 * Recursively copy one folder/file to another
 	 * @param fromFile the origin
 	 * @param toFile the destination
