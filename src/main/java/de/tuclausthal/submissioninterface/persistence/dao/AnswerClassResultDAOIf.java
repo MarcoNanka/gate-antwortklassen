@@ -18,6 +18,8 @@
 
 package de.tuclausthal.submissioninterface.persistence.dao;
 
+import java.util.List;
+
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClass;
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResult;
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResultSource;
@@ -35,4 +37,12 @@ public interface AnswerClassResultDAOIf {
 	void storeResult(AnswerClass answerClass, Submission submission, AnswerClassResultStatus status, String details, AnswerClassResultSource source, User evaluatedBy);
 
 	AnswerClassResult getResult(AnswerClass answerClass, Submission submission);
+
+	/**
+	 * @return all stored results for {@code submission}, ordered by answer class id ascending
+	 *         (i.e. the same order {@code AnswerClassDAOIf#getAnswerClassesForTask} returns its
+	 *         answer classes in) — used by the student/tutor result views to avoid one query
+	 *         per answer class.
+	 */
+	List<AnswerClassResult> getResultsForSubmission(Submission submission);
 }

@@ -26,7 +26,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
@@ -40,6 +43,8 @@ import de.tuclausthal.submissioninterface.persistence.dao.DAOFactory;
 import de.tuclausthal.submissioninterface.persistence.dao.MCOptionDAOIf;
 import de.tuclausthal.submissioninterface.persistence.dao.PointGivenDAOIf;
 import de.tuclausthal.submissioninterface.persistence.dao.TestCountDAOIf;
+import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClass;
+import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResult;
 import de.tuclausthal.submissioninterface.persistence.datamodel.MCOption;
 import de.tuclausthal.submissioninterface.persistence.datamodel.Participation;
 import de.tuclausthal.submissioninterface.persistence.datamodel.PointCategory;
@@ -54,12 +59,14 @@ import de.tuclausthal.submissioninterface.servlets.controller.CloseSubmissionByS
 import de.tuclausthal.submissioninterface.servlets.controller.DeleteFile;
 import de.tuclausthal.submissioninterface.servlets.controller.DownloadModelSolutionFile;
 import de.tuclausthal.submissioninterface.servlets.controller.DownloadTaskFile;
+import de.tuclausthal.submissioninterface.servlets.controller.PerformStudentAnswerClasses;
 import de.tuclausthal.submissioninterface.servlets.controller.PerformStudentTest;
 import de.tuclausthal.submissioninterface.servlets.controller.ShowFile;
 import de.tuclausthal.submissioninterface.servlets.controller.ShowLecture;
 import de.tuclausthal.submissioninterface.servlets.controller.ShowTask;
 import de.tuclausthal.submissioninterface.servlets.controller.SubmitSolution;
 import de.tuclausthal.submissioninterface.servlets.controller.WebStart;
+import de.tuclausthal.submissioninterface.servlets.view.fragments.ShowAnswerClassResult;
 import de.tuclausthal.submissioninterface.tasktypes.ClozeTaskType;
 import de.tuclausthal.submissioninterface.template.Template;
 import de.tuclausthal.submissioninterface.template.TemplateFactory;
@@ -354,6 +361,41 @@ public class ShowTaskStudentView extends HttpServlet {
 					out.println("</tr>");
 				}
 				out.println("</table>");
+			}
+
+			List<AnswerClass> answerClasses = DAOFactory.AnswerClassDAOIf(session).getAnswerClassesForTask(task);
+			boolean anyAnswerClassVisible = answerClasses.stream().anyMatch(answerClass -> answerClass.getTimesRunnableByStudents() > 0);
+			if (!submittedFiles.isEmpty() && anyAnswerClassVisible && task.getDeadline().isAfter(ZonedDateTime.now()) && !(task.isAllowPrematureSubmissionClosing() && submission.isClosed())) {
+				List<AnswerClassResult> answerClassResults = DAOFactory.AnswerClassResultDAOIf(session).getResultsForSubmission(submission);
+				Map<Integer, AnswerClassResult> answerClassResultByAnswerClassId = answerClassResults.stream().collect(Collectors.toMap(result -> result.getAnswerClass().getId(), Function.identity()));
+				int answerClassesRunnable = DAOFactory.AnswerClassRunCountDAOIf(session).canStillRunXTimes(task, participation.getUser());
+				out.println("<p><h2>Antwortklassen:</h2>");
+				out.println("<table>");
+				for (AnswerClass answerClass : answerClasses) {
+					if (answerClass.getTimesRunnableByStudents() == 0) {
+						continue;
+					}
+					out.println("<tr>");
+					out.println("<th>" + Util.escapeHTML(answerClass.getTitle()) + "</th>");
+					out.println("<td>");
+					out.println(Util.textToHTML(answerClass.getDescription() == null ? "" : answerClass.getDescription()));
+					out.println("</td>");
+					out.println("<td>");
+					AnswerClassResult answerClassResult = answerClassResultByAnswerClassId.get(answerClass.getId());
+					out.println("<b>" + ShowAnswerClassResult.statusLabel(answerClassResult == null ? null : answerClassResult.getStatus()) + "</b>");
+					if (answerClassResult != null && answerClass.isGiveDetailsToStudents() && answerClassResult.getDetails() != null && !answerClassResult.getDetails().isEmpty()) {
+						out.println("<br>" + Util.textToHTML(answerClassResult.getDetails()));
+					}
+					out.println("</td>");
+					out.println("</tr>");
+				}
+				out.println("</table>");
+				if (answerClassesRunnable > 0) {
+					out.println("<form method=post action=\"" + Util.generateHTMLLink(PerformStudentAnswerClasses.class.getSimpleName() + "?taskid=" + task.getTaskid(), response) + "\"><input type=submit value=\"Antwortklassen ausführen\"></form>");
+					out.println(" (noch " + answerClassesRunnable + "x ausführbar)");
+				} else {
+					out.println("Limit erreicht");
+				}
 			}
 		} else {
 			out.println("<p>");

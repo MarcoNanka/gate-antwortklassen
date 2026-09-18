@@ -25,8 +25,11 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
@@ -39,6 +42,9 @@ import de.tuclausthal.submissioninterface.dynamictasks.DynamicTaskStrategieIf;
 import de.tuclausthal.submissioninterface.persistence.dao.DAOFactory;
 import de.tuclausthal.submissioninterface.persistence.dao.PointGivenDAOIf;
 import de.tuclausthal.submissioninterface.persistence.dao.SubmissionDAOIf;
+import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClass;
+import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResult;
+import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResultStatus;
 import de.tuclausthal.submissioninterface.persistence.datamodel.DockerTest;
 import de.tuclausthal.submissioninterface.persistence.datamodel.JavaAdvancedIOTest;
 import de.tuclausthal.submissioninterface.persistence.datamodel.MCOption;
@@ -59,10 +65,12 @@ import de.tuclausthal.submissioninterface.servlets.RequestAdapter;
 import de.tuclausthal.submissioninterface.servlets.controller.DownloadAsZip;
 import de.tuclausthal.submissioninterface.servlets.controller.GotoNextUngradedSubmission;
 import de.tuclausthal.submissioninterface.servlets.controller.PerformTest;
+import de.tuclausthal.submissioninterface.servlets.controller.PerformTutorAnswerClasses;
 import de.tuclausthal.submissioninterface.servlets.controller.ShowFile;
 import de.tuclausthal.submissioninterface.servlets.controller.ShowMarkHistory;
 import de.tuclausthal.submissioninterface.servlets.controller.ShowSubmission;
 import de.tuclausthal.submissioninterface.servlets.controller.ShowUser;
+import de.tuclausthal.submissioninterface.servlets.view.fragments.ShowAnswerClassResult;
 import de.tuclausthal.submissioninterface.servlets.view.fragments.ShowDockerTestResult;
 import de.tuclausthal.submissioninterface.servlets.view.fragments.ShowJavaAdvancedIOTestResult;
 import de.tuclausthal.submissioninterface.tasktypes.ClozeTaskType;
@@ -321,6 +329,40 @@ public class ShowSubmissionView extends HttpServlet {
 				out.println("</li>");
 			}
 			out.println("</ul>");
+		}
+
+		List<AnswerClass> answerClasses = DAOFactory.AnswerClassDAOIf(session).getAnswerClassesForTask(task);
+		if (!answerClasses.isEmpty()) {
+			List<AnswerClassResult> answerClassResults = DAOFactory.AnswerClassResultDAOIf(session).getResultsForSubmission(submission);
+			Map<Integer, AnswerClassResult> answerClassResultByAnswerClassId = answerClassResults.stream().collect(Collectors.toMap(result -> result.getAnswerClass().getId(), Function.identity()));
+			out.println("<h2>Antwortklassen: <a href=\"#\" onclick=\"toggleVisibility('answerclasses'); return false;\">(+/-)</a></h2>");
+			out.println("<ul id=answerclasses>");
+			for (AnswerClass answerClass : answerClasses) {
+				AnswerClassResult answerClassResult = answerClassResultByAnswerClassId.get(answerClass.getId());
+				out.println("<li>" + Util.escapeHTML(answerClass.getTitle()) + "<br>");
+				out.println("<b>Status:</b> " + ShowAnswerClassResult.statusLabel(answerClassResult == null ? null : answerClassResult.getStatus()) + "<br>");
+				if (answerClassResult != null && answerClassResult.getDetails() != null && !answerClassResult.getDetails().isEmpty()) {
+					out.println("<textarea cols=80 rows=6>" + Util.escapeHTML(answerClassResult.getDetails()) + "</textarea><br>");
+				}
+				out.println("<form class=mid method=post action=\"" + Util.generateHTMLLink(PerformTutorAnswerClasses.class.getSimpleName(), response) + "\">");
+				out.println("<input type=hidden name=sid value=" + submission.getSubmissionid() + ">");
+				out.println("<input type=hidden name=answerclassid value=" + answerClass.getId() + ">");
+				out.println("<select name=status size=1>");
+				for (AnswerClassResultStatus status : AnswerClassResultStatus.values()) {
+					out.println("<option value=" + status.name() + (answerClassResult != null && answerClassResult.getStatus() == status ? " selected" : "") + ">" + ShowAnswerClassResult.statusLabel(status) + "</option>");
+				}
+				out.println("</select> <input type=text name=details placeholder=\"Anmerkung\" value=\"" + (answerClassResult == null ? "" : Util.escapeHTML(answerClassResult.getDetails())) + "\">");
+				out.println(" <input type=submit value=\"manuell setzen\">");
+				out.println("</form>");
+				out.println("</li>");
+			}
+			out.println("</ul>");
+			if (!submittedFiles.isEmpty() && task.getDeadline().isAfter(ZonedDateTime.now())) {
+				out.println("<form class=mid method=post action=\"" + Util.generateHTMLLink(PerformTutorAnswerClasses.class.getSimpleName(), response) + "\">");
+				out.println("<input type=hidden name=sid value=" + submission.getSubmissionid() + ">");
+				out.println("<input type=submit value=\"Antwortklassen-Pipeline auf Abgabe ausführen\">");
+				out.println("</form>");
+			}
 		}
 
 		if (task.isSCMCTask()) {

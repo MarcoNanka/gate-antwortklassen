@@ -22,13 +22,18 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.stream.Collectors;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+import org.hibernate.Session;
+
 import de.tuclausthal.submissioninterface.dynamictasks.DynamicTaskStrategieFactory;
+import de.tuclausthal.submissioninterface.persistence.dao.DAOFactory;
+import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClass;
 import de.tuclausthal.submissioninterface.persistence.datamodel.ChecklistTest;
 import de.tuclausthal.submissioninterface.persistence.datamodel.CommentsMetricTest;
 import de.tuclausthal.submissioninterface.persistence.datamodel.CompileTest;
@@ -45,6 +50,8 @@ import de.tuclausthal.submissioninterface.persistence.datamodel.Task;
 import de.tuclausthal.submissioninterface.persistence.datamodel.TaskGroup;
 import de.tuclausthal.submissioninterface.persistence.datamodel.Test;
 import de.tuclausthal.submissioninterface.servlets.GATEView;
+import de.tuclausthal.submissioninterface.servlets.RequestAdapter;
+import de.tuclausthal.submissioninterface.servlets.controller.AnswerClassManager;
 import de.tuclausthal.submissioninterface.servlets.controller.ChecklistTestManager;
 import de.tuclausthal.submissioninterface.servlets.controller.DockerTestManager;
 import de.tuclausthal.submissioninterface.servlets.controller.DownloadModelSolutionFile;
@@ -72,6 +79,7 @@ public class TaskManagerView extends HttpServlet {
 	@Override
 	public void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException {
 		Template template = TemplateFactory.getTemplate(request, response);
+		Session session = RequestAdapter.getSession(request);
 
 		Task task = (Task) request.getAttribute("task");
 		Lecture lecture = task.getTaskGroup().getLecture();
@@ -483,6 +491,29 @@ public class TaskManagerView extends HttpServlet {
 							out.println("<a onclick=\"return sendAsPost(this, 'Wirklich testen?')\" href=\"" + Util.generateHTMLLink(PerformTest.class.getSimpleName() + "?modelsolution=true&testid=" + test.getId(), response) + "\">Mit Musterlösung testen...</a><br>");
 						}
 						out.println("<a onclick=\"return sendAsPost(this, 'Wirklich löschen?')\" href=\"" + Util.generateHTMLLink(TestManager.class.getSimpleName() + "?action=deleteTest&testid=" + test.getId() + "&taskid=" + task.getTaskid(), response) + "\">Test löschen</a>");
+						out.println("</li>");
+					}
+					out.println("</ul>");
+				}
+
+				out.println("<h2>Antwortklassen</h2>");
+				out.println("<p class=mid><a href=\"" + Util.generateHTMLLink(AnswerClassManager.class.getSimpleName() + "?action=newAnswerClass&taskid=" + task.getTaskid(), response) + "\">Antwortklasse hinzufügen</a></p>");
+				List<AnswerClass> answerClasses = DAOFactory.AnswerClassDAOIf(session).getAnswerClassesForTask(task);
+				if (!answerClasses.isEmpty()) {
+					out.println("<ul>");
+					for (AnswerClass answerClass : answerClasses) {
+						out.println("<li>&quot;" + Util.escapeHTML(answerClass.getTitle()) + "&quot; (" + Util.escapeHTML(answerClass.getDetectionType()) + ")<br>");
+						out.println("# ausführbar für Studierende: " + answerClass.getTimesRunnableByStudents() + " (" + (answerClass.isGiveDetailsToStudents() ? "mit" : "ohne") + " Details)<br>");
+						if (!answerClass.getPrerequisites().isEmpty()) {
+							out.println("Voraussetzungen: " + answerClass.getPrerequisites().stream().map(prerequisite -> Util.escapeHTML(prerequisite.getTitle())).collect(Collectors.joining(", ")) + "<br>");
+						}
+						if (answerClass.isNeedsToRun()) {
+							out.println("Batch-Status: noch nicht (erneut) automatisch ausgewertet<br>");
+						} else {
+							out.println("Batch-Status: ausgewertet - <a onclick=\"return sendAsPost(this, 'Wirklich erneut auswerten?')\" href=\"" + Util.generateHTMLLink(AnswerClassManager.class.getSimpleName() + "?action=rerunAnswerClasses&taskid=" + task.getTaskid(), response) + "\">erneut im Batch auswerten</a><br>");
+						}
+						out.println("<a href=\"" + Util.generateHTMLLink(AnswerClassManager.class.getSimpleName() + "?action=editAnswerClass&taskid=" + task.getTaskid() + "&answerclassid=" + answerClass.getId(), response) + "\">bearbeiten</a> - ");
+						out.println("<a onclick=\"return sendAsPost(this, 'Wirklich löschen?')\" href=\"" + Util.generateHTMLLink(AnswerClassManager.class.getSimpleName() + "?action=deleteAnswerClass&taskid=" + task.getTaskid() + "&answerclassid=" + answerClass.getId(), response) + "\">löschen</a>");
 						out.println("</li>");
 					}
 					out.println("</ul>");

@@ -22,6 +22,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 
+import java.util.List;
+
 import org.hibernate.Transaction;
 import org.junit.jupiter.api.Test;
 
@@ -62,6 +64,19 @@ class AnswerClassResultDAOIfTest extends BasicTest {
 		assertEquals(AnswerClassResultStatus.MATCHED, result.getStatus());
 		assertEquals(AnswerClassResultSource.MANUAL, result.getSource());
 		assertEquals(3, result.getEvaluatedBy().getUid());
+	}
+
+	@Test
+	void testGetResultsForSubmission() {
+		List<AnswerClassResult> resultsForSubmission3 = DAOFactory.AnswerClassResultDAOIf(session).getResultsForSubmission(DAOFactory.SubmissionDAOIf(session).getSubmission(3));
+		assertEquals(2, resultsForSubmission3.size());
+		assertEquals(1, resultsForSubmission3.get(0).getAnswerClass().getId());
+		assertEquals(2, resultsForSubmission3.get(1).getAnswerClass().getId());
+
+		List<AnswerClassResult> resultsForSubmission7 = DAOFactory.AnswerClassResultDAOIf(session).getResultsForSubmission(DAOFactory.SubmissionDAOIf(session).getSubmission(7));
+		assertEquals(1, resultsForSubmission7.size());
+		assertEquals(1, resultsForSubmission7.get(0).getAnswerClass().getId());
+		assertEquals(AnswerClassResultStatus.NOT_MATCHED, resultsForSubmission7.get(0).getStatus());
 	}
 
 	@Test

@@ -19,6 +19,7 @@
 package de.tuclausthal.submissioninterface.persistence.dao.impl;
 
 import java.time.ZonedDateTime;
+import java.util.List;
 
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.criteria.CriteriaBuilder;
@@ -35,6 +36,7 @@ import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResul
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResultSource;
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResultStatus;
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResult_;
+import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClass_;
 import de.tuclausthal.submissioninterface.persistence.datamodel.Submission;
 import de.tuclausthal.submissioninterface.persistence.datamodel.User;
 
@@ -81,5 +83,17 @@ public class AnswerClassResultDAO extends AbstractDAO implements AnswerClassResu
 	@Override
 	public AnswerClassResult getResult(AnswerClass answerClass, Submission submission) {
 		return getResult(answerClass, submission, false);
+	}
+
+	@Override
+	public List<AnswerClassResult> getResultsForSubmission(Submission submission) {
+		Session session = getSession();
+		CriteriaBuilder builder = session.getCriteriaBuilder();
+		CriteriaQuery<AnswerClassResult> criteria = builder.createQuery(AnswerClassResult.class);
+		Root<AnswerClassResult> root = criteria.from(AnswerClassResult.class);
+		criteria.select(root);
+		criteria.where(builder.equal(root.get(AnswerClassResult_.submission), submission));
+		criteria.orderBy(builder.asc(root.join(AnswerClassResult_.answerClass).get(AnswerClass_.id)));
+		return session.createQuery(criteria).list();
 	}
 }
