@@ -19,6 +19,7 @@
 package de.tuclausthal.submissioninterface.answerclasses.java;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -26,6 +27,9 @@ import java.util.List;
 import java.util.Objects;
 
 import javax.tools.ToolProvider;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.github.javaparser.JavaParser;
 import com.github.javaparser.ParseResult;
@@ -40,16 +44,28 @@ import de.tuclausthal.submissioninterface.util.Util;
 
 /**
  * Java {@link LanguageProvider}: student/administrative workspace, javac BUILD, JavaParser AST.
- * EXECUTION_ENV is a no-op for the compile/AST MVP (no student code execution yet).
+ *
+ * <p><b>EXECUTION_ENV:</b> BUILD runs inside the {@code safe-docker} sandbox ({@link SafeDockerRunner})
+ * whenever that script is installed; otherwise it falls back to host-side {@code javac} (e.g. local
+ * dev/CI without the safe-docker deployment from {@code README.md}). RUN is not implemented yet —
+ * it would use the same sandbox once it exists.</p>
+ *
+ * <p><b>Provider-Policy</b> (see {@code docs/antwortklassen-pipeline.puml}): AST is only produced
+ * once BUILD is known to have succeeded — untrusted/uncompilable sources are not parsed for
+ * AST-based checks. This is enforced here regardless of any answer-class-level prerequisite.</p>
  */
 public class JavaLanguageProvider implements LanguageProvider {
+	private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+
 	public static final String STUDENT_DIR = "student";
 	public static final String ADMINISTRATIVE_DIR = "administrative";
 	public static final String CLASSES_DIR = "classes";
+	private static final int COMPILE_TIMEOUT_SECONDS = 30;
 
 	private final Path submissionPath;
 	private final Path administrativeSourcePath;
 	private Path tempDir;
+	private boolean sandboxAvailable;
 
 	/**
 	 * @param submissionPath directory with the student submission files (required)
@@ -86,11 +102,17 @@ public class JavaLanguageProvider implements LanguageProvider {
 
 	@Override
 	public void startExecutionEnv(EvaluationContext context) {
-		// MVP: compile/AST only — no sandbox process yet.
+		sandboxAvailable = SafeDockerRunner.isAvailable();
+		if (sandboxAvailable) {
+			LOG.debug("safe-docker is available - BUILD will run sandboxed");
+		} else {
+			LOG.debug("safe-docker is not installed - falling back to host javac for BUILD");
+		}
 	}
 
 	@Override
 	public void cleanupExecutionEnv(EvaluationContext context) {
+		sandboxAvailable = false;
 		if (tempDir != null) {
 			Util.recursiveDelete(tempDir);
 			tempDir = null;
@@ -98,6 +120,11 @@ public class JavaLanguageProvider implements LanguageProvider {
 		if (context != null) {
 			context.setWorkspaceRoot(null);
 		}
+	}
+
+	/** Package-private for tests: whether {@link #startExecutionEnv} detected a usable sandbox. */
+	boolean isSandboxAvailable() {
+		return sandboxAvailable;
 	}
 
 	@Override
@@ -123,9 +150,6 @@ public class JavaLanguageProvider implements LanguageProvider {
 	}
 
 	private boolean produceBuild(EvaluationContext context) {
-		if (ToolProvider.getSystemJavaCompiler() == null) {
-			return false;
-		}
 		try {
 			Path root = context.getWorkspaceRoot();
 			if (root == null) {
@@ -135,9 +159,10 @@ public class JavaLanguageProvider implements LanguageProvider {
 			Path classesDir = root.resolve(CLASSES_DIR);
 			Files.createDirectories(classesDir);
 
-			TestExecutorTestResult compileResult = new TestExecutorTestResult();
-			boolean ok = JavaSyntaxTest.compileJava(studentDir, null, classesDir, compileResult);
-			BuildArtifact artifact = new BuildArtifact(ok, compileResult.getTestOutput(), classesDir);
+			BuildArtifact artifact = sandboxAvailable ? compileInSandbox(root, studentDir, classesDir) : compileOnHost(studentDir, classesDir);
+			if (artifact == null) {
+				return false;
+			}
 			context.putArtifact(ArtifactType.BUILD, artifact);
 			context.putArtifact(ArtifactType.SYNTAX, artifact);
 			return true;
@@ -146,7 +171,57 @@ public class JavaLanguageProvider implements LanguageProvider {
 		}
 	}
 
+	/**
+	 * Host-side fallback compile (in-process {@code javac} via {@link ToolProvider}), used when
+	 * {@code safe-docker} isn't installed (e.g. local dev/CI).
+	 */
+	private BuildArtifact compileOnHost(Path studentDir, Path classesDir) throws Exception {
+		if (ToolProvider.getSystemJavaCompiler() == null) {
+			return null;
+		}
+		TestExecutorTestResult compileResult = new TestExecutorTestResult();
+		boolean ok = JavaSyntaxTest.compileJava(studentDir, null, classesDir, compileResult);
+		return new BuildArtifact(ok, compileResult.getTestOutput(), classesDir);
+	}
+
+	/**
+	 * Sandboxed compile: {@code javac} runs as an external process inside the safe-docker
+	 * container (see {@link SafeDockerRunner}), with {@code root} (containing both
+	 * {@value #STUDENT_DIR} and {@value #CLASSES_DIR}) bind-mounted read-write.
+	 */
+	private BuildArtifact compileInSandbox(Path root, Path studentDir, Path classesDir) throws IOException {
+		List<String> javaFiles = new ArrayList<>();
+		JavaSyntaxTest.getRecursivelyAllJavaFiles(studentDir, javaFiles);
+		if (javaFiles.isEmpty()) {
+			return new BuildArtifact(false, "no .java files found", classesDir);
+		}
+
+		List<String> command = new ArrayList<>();
+		command.add("javac");
+		command.add("-d");
+		command.add(classesDir.toAbsolutePath().toString());
+		command.addAll(javaFiles);
+
+		SafeDockerRunner.Result result = SafeDockerRunner.run(root, COMPILE_TIMEOUT_SECONDS, command);
+		String diagnostics = result.getStdErr().isBlank() ? result.getStdOut() : result.getStdErr();
+		if (!result.isSuccessful() && result.isTimedOut()) {
+			diagnostics = "javac timed out after " + COMPILE_TIMEOUT_SECONDS + "s";
+		} else if (!result.isSuccessful() && result.isOutOfMemory()) {
+			diagnostics = "javac ran out of memory";
+		}
+		return new BuildArtifact(result.isSuccessful(), diagnostics, classesDir);
+	}
+
 	private boolean produceAst(EvaluationContext context) {
+		// Provider-Policy (docs/antwortklassen-pipeline.puml): AST is only trusted once the
+		// sources are known to compile, independent of any answer-class-level prerequisite.
+		if (!ensureArtifact(ArtifactType.BUILD, context)) {
+			return false;
+		}
+		BuildArtifact build = context.<BuildArtifact>getArtifact(ArtifactType.BUILD).orElse(null);
+		if (build == null || !build.isSuccessful()) {
+			return false;
+		}
 		try {
 			Path studentDir = getStudentDirectory(context);
 			List<String> javaFiles = new ArrayList<>();

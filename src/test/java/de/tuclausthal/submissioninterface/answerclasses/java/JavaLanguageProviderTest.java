@@ -79,6 +79,57 @@ class JavaLanguageProviderTest {
 	}
 
 	@Test
+	void startExecutionEnvDetectsSandboxAvailability() throws Exception {
+		JavaLanguageProvider provider = new JavaLanguageProvider(resourceDir("answerclasses/java/hello"));
+		EvaluationContext context = new EvaluationContext(PipelineTrigger.STUDENT);
+		provider.assembleWorkspace(context);
+		try {
+			assertFalse(provider.isSandboxAvailable()); // not started yet
+			provider.startExecutionEnv(context);
+			// this dev/CI environment does not have safe-docker installed - host javac fallback
+			assertEquals(SafeDockerRunner.isAvailable(), provider.isSandboxAvailable());
+			assertFalse(provider.isSandboxAvailable());
+		} finally {
+			provider.cleanupExecutionEnv(context);
+			assertFalse(provider.isSandboxAvailable()); // reset on cleanup
+		}
+	}
+
+	@Test
+	void astRequiresSuccessfulBuildRegardlessOfAnswerClassPrerequisites() throws Exception {
+		// Provider-Policy (docs/antwortklassen-pipeline.puml): AST is withheld once BUILD fails,
+		// even if nobody asked for BUILD first and no answer-class-level prerequisite exists.
+		JavaLanguageProvider provider = new JavaLanguageProvider(resourceDir("answerclasses/java/broken"));
+		EvaluationContext context = new EvaluationContext(PipelineTrigger.BATCH);
+		provider.assembleWorkspace(context);
+		try {
+			assertFalse(provider.ensureArtifact(ArtifactType.AST, context));
+			assertFalse(context.hasArtifact(ArtifactType.AST));
+
+			// BUILD was produced as a side effect of resolving the AST dependency, and cached
+			assertTrue(context.hasArtifact(ArtifactType.BUILD));
+			assertFalse(context.<BuildArtifact>getArtifact(ArtifactType.BUILD).orElseThrow().isSuccessful());
+		} finally {
+			provider.cleanupExecutionEnv(context);
+		}
+	}
+
+	@Test
+	void astSucceedsOnceBuildSucceeds() throws Exception {
+		JavaLanguageProvider provider = new JavaLanguageProvider(resourceDir("answerclasses/java/whileloop"));
+		EvaluationContext context = new EvaluationContext(PipelineTrigger.BATCH);
+		provider.assembleWorkspace(context);
+		try {
+			assertTrue(provider.ensureArtifact(ArtifactType.AST, context));
+			assertTrue(context.hasArtifact(ArtifactType.BUILD));
+			assertTrue(context.<BuildArtifact>getArtifact(ArtifactType.BUILD).orElseThrow().isSuccessful());
+			assertEquals(1, context.<AstArtifact>getArtifact(ArtifactType.AST).orElseThrow().getCompilationUnits().size());
+		} finally {
+			provider.cleanupExecutionEnv(context);
+		}
+	}
+
+	@Test
 	void pipelineCompileAndWhileLoop() throws Exception {
 		Path submission = resourceDir("answerclasses/java/whileloop");
 		JavaLanguageProvider provider = new JavaLanguageProvider(submission);
@@ -121,6 +172,21 @@ class JavaLanguageProviderTest {
 		assertEquals(AnswerClassResultStatus.MATCHED, results.get(0).getStatus());
 		assertEquals(AnswerClassResultStatus.NOT_MATCHED, results.get(1).getStatus());
 		assertEquals(AnswerClassResultSource.MANUAL, results.get(1).getSource());
+	}
+
+	@Test
+	void pipelineSkipsWhileLoopOnBrokenBuildWithoutExplicitPrerequisite() throws Exception {
+		// Same broken-build scenario as pipelineCompileFailsSkipsWhilePrerequisite, but WITHOUT
+		// any AC-level prerequisiteIds - the provider policy alone must still cause SKIPPED.
+		Path submission = resourceDir("answerclasses/java/broken");
+		JavaLanguageProvider provider = new JavaLanguageProvider(submission);
+		List<AnswerClassToEvaluate> answerClasses = List.of(new AnswerClassToEvaluate(2, JavaDetectionTypes.WHILE_LOOP, 2, List.of()));
+
+		List<PipelineResult> results = new AnswerClassPipeline().run(PipelineTrigger.BATCH, true, answerClasses, provider, JavaCheckerRegistry.createDefault(), result -> {
+		});
+
+		assertEquals(1, results.size());
+		assertEquals(AnswerClassResultStatus.SKIPPED, results.get(0).getStatus());
 	}
 
 	private static Path resourceDir(String relative) throws URISyntaxException {
