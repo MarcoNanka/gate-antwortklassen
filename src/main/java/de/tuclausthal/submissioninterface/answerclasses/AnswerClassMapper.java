@@ -21,6 +21,7 @@ package de.tuclausthal.submissioninterface.answerclasses;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClass;
 
@@ -33,10 +34,9 @@ import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClass;
  * returned by {@code AnswerClassDAOIf#getAnswerClassesForTask}, which is already sorted by
  * ascending id.</p>
  *
- * <p>Prerequisites: {@link AnswerClass} does not (yet) persist prerequisite ids, so every
- * mapped {@link AnswerClassToEvaluate} currently has an empty prerequisite list. Once
- * prerequisites are modeled in the DB (see the "Optional" step in the antwortklassen rule),
- * this is the only place that needs to change.</p>
+ * <p>Prerequisites: sourced from {@link AnswerClass#getPrerequisites()} (self-referencing
+ * many-to-many, table {@code answerclass_prerequisites}). Order within the prerequisite list
+ * is irrelevant - the pipeline only checks whether every referenced id was MATCHED.</p>
  */
 public final class AnswerClassMapper {
 	private AnswerClassMapper() {}
@@ -56,6 +56,7 @@ public final class AnswerClassMapper {
 
 	public static AnswerClassToEvaluate map(AnswerClass answerClass) {
 		Objects.requireNonNull(answerClass, "answerClass");
-		return new AnswerClassToEvaluate(answerClass.getId(), answerClass.getDetectionType(), answerClass.getTimesRunnableByStudents(), List.of());
+		List<Integer> prerequisiteIds = answerClass.getPrerequisites().stream().map(AnswerClass::getId).collect(Collectors.toList());
+		return new AnswerClassToEvaluate(answerClass.getId(), answerClass.getDetectionType(), answerClass.getTimesRunnableByStudents(), prerequisiteIds);
 	}
 }

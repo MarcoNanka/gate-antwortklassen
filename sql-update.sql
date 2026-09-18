@@ -171,6 +171,16 @@ CREATE TABLE IF NOT EXISTS `answerclasses` (
   CONSTRAINT `FK_answerclasses_task` FOREIGN KEY (`taskid`) REFERENCES `tasks` (`taskid`) ON DELETE CASCADE ON UPDATE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
+-- Antwortklassen: Prerequisites (self-referencing many-to-many; eine AC wird erst ausgewertet,
+-- wenn alle ihre Voraussetzungs-ACs MATCHED sind, siehe AnswerClassPipeline)
+CREATE TABLE IF NOT EXISTS `answerclass_prerequisites` (
+  `answerclassid` int(11) NOT NULL,
+  `prerequisiteid` int(11) NOT NULL,
+  PRIMARY KEY (`answerclassid`,`prerequisiteid`),
+  CONSTRAINT `FK_answerclass_prerequisites_answerclass` FOREIGN KEY (`answerclassid`) REFERENCES `answerclasses` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT,
+  CONSTRAINT `FK_answerclass_prerequisites_prerequisite` FOREIGN KEY (`prerequisiteid`) REFERENCES `answerclasses` (`id`) ON DELETE CASCADE ON UPDATE RESTRICT
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
 -- Antwortklassen: Run-Counts für Button „Antwortklassen einfordern“ (pro Student pro Aufgabe)
 CREATE TABLE IF NOT EXISTS `answerclassruncounts` (
   `id` int(11) NOT NULL AUTO_INCREMENT,

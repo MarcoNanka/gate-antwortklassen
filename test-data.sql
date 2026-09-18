@@ -102,6 +102,14 @@ INSERT INTO `answerclasses` (`id`, `taskid`, `title`, `description`, `detectionT
 (2, 3, 'While loop', 'Submission contains a while loop', 'WHILE_LOOP', 2, b'1');
 
 --
+-- Daten für Tabelle `answerclass_prerequisites`
+-- (While loop (2) requires Code compiles (1) to be MATCHED first)
+--
+
+INSERT INTO `answerclass_prerequisites` (`answerclassid`, `prerequisiteid`) VALUES
+(2, 1);
+
+--
 -- Daten für Tabelle `answerclassresults`
 --
 

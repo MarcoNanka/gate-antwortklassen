@@ -491,6 +491,22 @@ CREATE TABLE IF NOT EXISTS `answerclasses` (
 -- --------------------------------------------------------
 
 --
+-- Tabellenstruktur für Tabelle `answerclass_prerequisites`
+-- Self-referencing many-to-many: an answer class is only evaluated once all
+-- of its prerequisite answer classes are MATCHED (see AnswerClassPipeline).
+--
+
+DROP TABLE IF EXISTS `answerclass_prerequisites`;
+CREATE TABLE IF NOT EXISTS `answerclass_prerequisites` (
+  `answerclassid` int(11) NOT NULL,
+  `prerequisiteid` int(11) NOT NULL,
+  PRIMARY KEY (`answerclassid`,`prerequisiteid`),
+  KEY `FK_answerclass_prerequisites_prerequisite` (`prerequisiteid`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+-- --------------------------------------------------------
+
+--
 -- Tabellenstruktur für Tabelle `answerclassresults`
 -- status: MATCHED | NOT_MATCHED | SKIPPED | PENDING
 -- source: STUDENT_PREVIEW | AUTOMATIC | MANUAL
@@ -699,6 +715,13 @@ ALTER TABLE `answerclassruncounts`
 --
 ALTER TABLE `answerclasses`
   ADD CONSTRAINT `FK_answerclasses_task` FOREIGN KEY (`taskid`) REFERENCES `tasks` (`taskid`) ON DELETE CASCADE;
+
+--
+-- Constraints der Tabelle `answerclass_prerequisites`
+--
+ALTER TABLE `answerclass_prerequisites`
+  ADD CONSTRAINT `FK_answerclass_prerequisites_answerclass` FOREIGN KEY (`answerclassid`) REFERENCES `answerclasses` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `FK_answerclass_prerequisites_prerequisite` FOREIGN KEY (`prerequisiteid`) REFERENCES `answerclasses` (`id`) ON DELETE CASCADE;
 
 --
 -- Constraints der Tabelle `answerclassresults`

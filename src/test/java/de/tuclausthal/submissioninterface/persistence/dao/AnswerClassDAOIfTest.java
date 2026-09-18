@@ -56,6 +56,18 @@ class AnswerClassDAOIfTest extends BasicTest {
 	}
 
 	@Test
+	void testGetAnswerClassesForTaskLoadsPrerequisites() {
+		List<AnswerClass> answerClasses = DAOFactory.AnswerClassDAOIf(session).getAnswerClassesForTask(DAOFactory.TaskDAOIf(session).getTask(3));
+
+		AnswerClass compileOk = answerClasses.get(0);
+		assertTrue(compileOk.getPrerequisites().isEmpty());
+
+		AnswerClass whileLoop = answerClasses.get(1);
+		assertEquals(1, whileLoop.getPrerequisites().size());
+		assertEquals(compileOk.getId(), whileLoop.getPrerequisites().iterator().next().getId());
+	}
+
+	@Test
 	void testGetAnswerClass() {
 		AnswerClass answerClass = DAOFactory.AnswerClassDAOIf(session).getAnswerClass(1);
 		assertNotNull(answerClass);

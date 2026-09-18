@@ -20,6 +20,8 @@ package de.tuclausthal.submissioninterface.persistence.datamodel;
 
 import java.io.Serializable;
 import java.lang.invoke.MethodHandles;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -27,7 +29,10 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 
 import org.hibernate.annotations.OnDelete;
@@ -58,6 +63,14 @@ public class AnswerClass implements Serializable {
 	private int timesRunnableByStudents = 3;
 	@Column(nullable = false)
 	private boolean giveDetailsToStudents = true;
+	/**
+	 * Self-referencing many-to-many: this answer class is only evaluated once all of its
+	 * prerequisites are MATCHED (see {@code AnswerClassPipeline} / {@code AnswerClassMapper}).
+	 */
+	@ManyToMany
+	@JoinTable(name = "answerclass_prerequisites", joinColumns = @JoinColumn(name = "answerclassid"), inverseJoinColumns = @JoinColumn(name = "prerequisiteid"))
+	@OrderBy("id asc")
+	private Set<AnswerClass> prerequisites = new LinkedHashSet<>();
 
 	protected AnswerClass() {}
 
@@ -127,6 +140,18 @@ public class AnswerClass implements Serializable {
 
 	public void setGiveDetailsToStudents(boolean giveDetailsToStudents) {
 		this.giveDetailsToStudents = giveDetailsToStudents;
+	}
+
+	public Set<AnswerClass> getPrerequisites() {
+		return prerequisites;
+	}
+
+	public void setPrerequisites(Set<AnswerClass> prerequisites) {
+		this.prerequisites = prerequisites == null ? new LinkedHashSet<>() : prerequisites;
+	}
+
+	public void addPrerequisite(AnswerClass prerequisite) {
+		this.prerequisites.add(prerequisite);
 	}
 
 	@Override

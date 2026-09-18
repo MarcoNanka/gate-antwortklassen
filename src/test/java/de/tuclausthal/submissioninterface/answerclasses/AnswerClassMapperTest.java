@@ -57,6 +57,20 @@ class AnswerClassMapperTest {
 	}
 
 	@Test
+	void mapsPrerequisiteIds() {
+		Task task = new Task();
+		AnswerClass compileOk = new AnswerClass(task, "Code compiles", "desc", "COMPILE_OK", 2, true);
+		compileOk.setId(1);
+		AnswerClass whileLoop = new AnswerClass(task, "While loop", "desc", "WHILE_LOOP", 2, true);
+		whileLoop.setId(2);
+		whileLoop.addPrerequisite(compileOk);
+
+		AnswerClassToEvaluate mapped = AnswerClassMapper.map(whileLoop);
+
+		assertEquals(List.of(1), mapped.getPrerequisiteIds());
+	}
+
+	@Test
 	void mapEmptyListReturnsEmptyList() {
 		assertTrue(AnswerClassMapper.map(List.of()).isEmpty());
 	}
