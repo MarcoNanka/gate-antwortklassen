@@ -9,6 +9,9 @@ RUN apt-get update -qq && apt-get dist-upgrade -y && apt-get install -qq --yes a
 # set up Haskell
 RUN apt-get -qq update && apt-get install -qq --yes ghc libghc-test-framework-dev libghc-test-framework-hunit-dev libghc-test-framework-quickcheck2-dev && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Java answer-class BUILD (javac) inside the same sandbox as Docker tests
+RUN apt-get -qq update && apt-get install -qq --yes default-jdk-headless && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 # set default language, but with UTF-8; needed for Haskell
 ENV LC_ALL="C.UTF-8"
 

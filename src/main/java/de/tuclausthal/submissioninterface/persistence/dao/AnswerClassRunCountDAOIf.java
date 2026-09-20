@@ -27,7 +27,8 @@ import de.tuclausthal.submissioninterface.persistence.datamodel.User;
 public interface AnswerClassRunCountDAOIf {
 	/**
 	 * Increments the counter if the student may still request answer classes for the task.
-	 * The limit is taken from the answer classes of the task (timesRunnableByStudents).
+	 * The limit is the shared student run budget of the task ({@code timesRunnableByStudents}
+	 * on its answer classes; kept in sync by {@code AnswerClassManager}).
 	 * @return true if the request is allowed and the counter was incremented
 	 */
 	boolean canSeeResultAndIncrementCounterTransaction(Task task, User user);

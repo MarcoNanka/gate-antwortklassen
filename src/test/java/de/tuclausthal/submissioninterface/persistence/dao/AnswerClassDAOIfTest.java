@@ -32,6 +32,7 @@ import org.junit.jupiter.api.Test;
 import de.tuclausthal.submissioninterface.BasicTest;
 import de.tuclausthal.submissioninterface.GATEDBTest;
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClass;
+import de.tuclausthal.submissioninterface.persistence.datamodel.ProgrammingLanguage;
 import de.tuclausthal.submissioninterface.persistence.datamodel.Task;
 
 @GATEDBTest
@@ -91,6 +92,38 @@ class AnswerClassDAOIfTest extends BasicTest {
 		DAOFactory.AnswerClassDAOIf(session).deleteAnswerClass(created);
 		assertNull(DAOFactory.AnswerClassDAOIf(session).getAnswerClass(created.getId()));
 		assertEquals(before.size(), DAOFactory.AnswerClassDAOIf(session).getAnswerClassesForTask(task).size());
+
+		tx.rollback();
+	}
+
+	@Test
+	void testSetTimesRunnableByStudentsForTaskSyncsAllSiblings() {
+		Transaction tx = session.beginTransaction();
+		Task task = DAOFactory.TaskDAOIf(session).getTask(3);
+		AnswerClassDAOIf answerClassDAO = DAOFactory.AnswerClassDAOIf(session);
+
+		answerClassDAO.getAnswerClassLocked(1).setTimesRunnableByStudents(2);
+		answerClassDAO.getAnswerClassLocked(2).setTimesRunnableByStudents(10);
+		assertEquals(2, answerClassDAO.getAnswerClass(1).getTimesRunnableByStudents());
+		assertEquals(10, answerClassDAO.getAnswerClass(2).getTimesRunnableByStudents());
+
+		answerClassDAO.setTimesRunnableByStudentsForTask(task, 5);
+		assertEquals(5, answerClassDAO.getAnswerClass(1).getTimesRunnableByStudents());
+		assertEquals(5, answerClassDAO.getAnswerClass(2).getTimesRunnableByStudents());
+
+		tx.rollback();
+	}
+
+	@Test
+	void testSetProgrammingLanguageForTaskSyncsAllSiblings() {
+		Transaction tx = session.beginTransaction();
+		Task task = DAOFactory.TaskDAOIf(session).getTask(3);
+		AnswerClassDAOIf answerClassDAO = DAOFactory.AnswerClassDAOIf(session);
+
+		assertEquals(ProgrammingLanguage.JAVA, answerClassDAO.getProgrammingLanguageForTask(task));
+		answerClassDAO.setProgrammingLanguageForTask(task, ProgrammingLanguage.JAVA);
+		assertEquals(ProgrammingLanguage.JAVA, answerClassDAO.getAnswerClass(1).getProgrammingLanguage());
+		assertEquals(ProgrammingLanguage.JAVA, answerClassDAO.getAnswerClass(2).getProgrammingLanguage());
 
 		tx.rollback();
 	}

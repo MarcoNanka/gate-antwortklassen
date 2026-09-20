@@ -34,6 +34,7 @@ import org.hibernate.Session;
 import de.tuclausthal.submissioninterface.answerclasses.java.JavaDetectionTypes;
 import de.tuclausthal.submissioninterface.persistence.dao.DAOFactory;
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClass;
+import de.tuclausthal.submissioninterface.persistence.datamodel.ProgrammingLanguage;
 import de.tuclausthal.submissioninterface.persistence.datamodel.Task;
 import de.tuclausthal.submissioninterface.servlets.GATEView;
 import de.tuclausthal.submissioninterface.servlets.RequestAdapter;
@@ -45,7 +46,10 @@ import de.tuclausthal.submissioninterface.util.Util;
 
 /**
  * Advisor form to create or edit one {@link AnswerClass} (title, description, detectionType,
- * student run-limit/details, prerequisites). Mirrors {@code TestManagerAddTestFormView}.
+ * shared student run-limit/details, prerequisites). Mirrors {@code TestManagerAddTestFormView}.
+ *
+ * <p>The student run budget is shared across all answer classes of the task: the field is
+ * prefilled from the siblings and saving writes the value onto every AC of the task.</p>
  *
  * <p>Only the two built-in Java detectionTypes ({@link JavaDetectionTypes}) are offered right
  * now; once more languages/checkers exist, this is the place to make the option list
@@ -69,6 +73,9 @@ public class AnswerClassManagerFormView extends HttpServlet {
 
 		List<AnswerClass> allAnswerClasses = DAOFactory.AnswerClassDAOIf(session).getAnswerClassesForTask(task);
 		Set<Integer> selectedPrerequisiteIds = answerClass == null ? Set.of() : answerClass.getPrerequisites().stream().map(AnswerClass::getId).collect(Collectors.toSet());
+		// shared budget / language for the whole task (prefill from siblings; defaults when none exist yet)
+		int sharedTimesRunnableByStudents = allAnswerClasses.isEmpty() ? 3 : allAnswerClasses.stream().mapToInt(AnswerClass::getTimesRunnableByStudents).max().orElse(3);
+		ProgrammingLanguage sharedProgrammingLanguage = DAOFactory.AnswerClassDAOIf(session).getProgrammingLanguageForTask(task);
 
 		out.println("<h2>Antwortklasse</h2>");
 		out.println("<form action=\"" + Util.generateHTMLLink("?", response) + "\" method=post>");
@@ -87,17 +94,31 @@ public class AnswerClassManagerFormView extends HttpServlet {
 		out.println("<td><textarea cols=60 rows=6 name=description>" + Util.escapeHTML(answerClass == null ? "" : answerClass.getDescription()) + "</textarea></td>");
 		out.println("</tr>");
 		out.println("<tr>");
+		out.println("<th>Programmiersprache:</th>");
+		out.println("<td><select name=programmingLanguage size=1 required=required>");
+		// Only languages with an implemented LanguageProvider are listed (currently JAVA only).
+		for (ProgrammingLanguage language : ProgrammingLanguage.values()) {
+			boolean selected = language == sharedProgrammingLanguage;
+			out.println("<option value=\"" + Util.escapeHTML(language.name()) + "\"" + (selected ? " selected" : "") + ">" + Util.escapeHTML(language.getDisplayName()) + "</option>");
+		}
+		out.println("</select> <em>gemeinsam für alle Antwortklassen dieser Aufgabe</em> (Änderung beim Speichern wird auf alle übernommen)</td>");
+		out.println("</tr>");
+		out.println("<tr>");
 		out.println("<th>Erkennungsart:</th>");
 		out.println("<td><select name=detectionType size=1 required=required>");
-		for (String detectionType : List.of(JavaDetectionTypes.COMPILE_OK, JavaDetectionTypes.WHILE_LOOP)) {
-			boolean selected = answerClass != null && detectionType.equals(answerClass.getDetectionType());
-			out.println("<option value=\"" + Util.escapeHTML(detectionType) + "\"" + (selected ? " selected" : "") + ">" + Util.escapeHTML(detectionType) + "</option>");
+		if (answerClass == null) {
+			out.println("<option value=\"\" disabled selected>bitte wählen</option>");
 		}
-		out.println("</select></td>");
+		List<String> detectionTypes = sharedProgrammingLanguage == ProgrammingLanguage.JAVA ? List.of(JavaDetectionTypes.COMPILE_OK, JavaDetectionTypes.WHILE_LOOP) : List.of();
+		for (String detectionType : detectionTypes) {
+			boolean selected = answerClass != null && detectionType.equals(answerClass.getDetectionType());
+			out.println("<option value=\"" + Util.escapeHTML(detectionType) + "\"" + (selected ? " selected" : "") + ">" + Util.escapeHTML(JavaDetectionTypes.displayName(detectionType)) + "</option>");
+		}
+		out.println("</select> <em>legt fest, was geprüft wird</em> (Titel/Beschreibung sind nur Anzeige)</td>");
 		out.println("</tr>");
 		out.println("<tr>");
 		out.println("<th># ausführbar für Studierende:</th>");
-		out.println("<td><input type=text name=timesRunnableByStudents value=\"" + (answerClass == null ? 3 : answerClass.getTimesRunnableByStudents()) + "\" required=required pattern=\"[0-9]+\"> (gilt gemeinsam für alle Antwortklassen dieser Aufgabe)</td>");
+		out.println("<td><input type=text name=timesRunnableByStudents value=\"" + sharedTimesRunnableByStudents + "\" required=required pattern=\"[0-9]+\"> <em>gemeinsames Limit für alle Antwortklassen dieser Aufgabe</em> (Änderung beim Speichern wird auf alle übernommen)</td>");
 		out.println("</tr>");
 		out.println("<tr>");
 		out.println("<th>Studierenden Details anzeigen:</th>");

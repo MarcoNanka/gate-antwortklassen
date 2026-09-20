@@ -19,6 +19,8 @@
 package de.tuclausthal.submissioninterface.servlets.controller;
 
 import java.io.IOException;
+import java.lang.invoke.MethodHandles;
+import java.time.ZonedDateTime;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -29,7 +31,11 @@ import jakarta.servlet.http.HttpServletResponse;
 
 import org.hibernate.LockMode;
 import org.hibernate.Session;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import de.tuclausthal.submissioninterface.answerclasses.AnswerClassBatchRunner;
+import de.tuclausthal.submissioninterface.answerclasses.java.JavaDetectionTypes;
 import de.tuclausthal.submissioninterface.persistence.dao.AnswerClassDAOIf;
 import de.tuclausthal.submissioninterface.persistence.dao.DAOFactory;
 import de.tuclausthal.submissioninterface.persistence.dao.ParticipationDAOIf;
@@ -37,11 +43,13 @@ import de.tuclausthal.submissioninterface.persistence.dao.TaskDAOIf;
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClass;
 import de.tuclausthal.submissioninterface.persistence.datamodel.Participation;
 import de.tuclausthal.submissioninterface.persistence.datamodel.ParticipationRole;
+import de.tuclausthal.submissioninterface.persistence.datamodel.ProgrammingLanguage;
 import de.tuclausthal.submissioninterface.persistence.datamodel.Task;
 import de.tuclausthal.submissioninterface.servlets.GATEController;
 import de.tuclausthal.submissioninterface.servlets.RequestAdapter;
 import de.tuclausthal.submissioninterface.servlets.view.AnswerClassManagerFormView;
 import de.tuclausthal.submissioninterface.servlets.view.MessageView;
+import de.tuclausthal.submissioninterface.util.Configuration;
 import de.tuclausthal.submissioninterface.util.Util;
 
 /**
@@ -52,6 +60,7 @@ import de.tuclausthal.submissioninterface.util.Util;
 @GATEController
 public class AnswerClassManager extends HttpServlet {
 	private static final long serialVersionUID = 1L;
+	private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
 	@Override
 	public void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException {
@@ -118,8 +127,14 @@ public class AnswerClassManager extends HttpServlet {
 			String title = request.getParameter("title");
 			String description = request.getParameter("description");
 			String detectionType = request.getParameter("detectionType");
+			ProgrammingLanguage programmingLanguage = ProgrammingLanguage.fromParam(request.getParameter("programmingLanguage"));
 			int timesRunnableByStudents = Util.parseInteger(request.getParameter("timesRunnableByStudents"), 0);
 			boolean giveDetailsToStudents = request.getParameter("giveDetailsToStudents") != null;
+			if (programmingLanguage == ProgrammingLanguage.JAVA && !JavaDetectionTypes.isKnown(detectionType)) {
+				request.setAttribute("title", "Ungültige Erkennungsart");
+				getServletContext().getNamedDispatcher(MessageView.class.getSimpleName()).forward(request, response);
+				return;
+			}
 
 			session.beginTransaction();
 			AnswerClass answerClass;
@@ -136,7 +151,6 @@ public class AnswerClassManager extends HttpServlet {
 				answerClass.setTitle(title);
 				answerClass.setDescription(description);
 				answerClass.setDetectionType(detectionType);
-				answerClass.setTimesRunnableByStudents(timesRunnableByStudents);
 				answerClass.setGiveDetailsToStudents(giveDetailsToStudents);
 			} else {
 				answerClass = answerClassDAO.createAnswerClass(task, title, description, detectionType, timesRunnableByStudents, giveDetailsToStudents);
@@ -157,8 +171,10 @@ public class AnswerClassManager extends HttpServlet {
 				}
 			}
 			answerClass.setPrerequisites(prerequisites);
-			// every answer class of a task is evaluated together in one AnswerClassRunner pass,
-			// so a create/edit should be picked up again by the next batch run
+			// one student button / one batch pass evaluates all ACs of a task together → shared
+			// run budget and programming language must stay identical on every sibling
+			answerClassDAO.setTimesRunnableByStudentsForTask(task, timesRunnableByStudents);
+			answerClassDAO.setProgrammingLanguageForTask(task, programmingLanguage);
 			for (AnswerClass sibling : answerClassDAO.getAnswerClassesForTask(task)) {
 				sibling.setNeedsToRun(true);
 			}
@@ -179,6 +195,28 @@ public class AnswerClassManager extends HttpServlet {
 				answerClass.setNeedsToRun(true);
 			}
 			session.getTransaction().commit();
+			response.sendRedirect(Util.generateRedirectURL(TaskManager.class.getSimpleName() + "?action=editTask&lecture=" + task.getTaskGroup().getLecture().getId() + "&taskid=" + task.getTaskid(), response));
+		} else if ("executeAnswerClassBatch".equals(request.getParameter("action"))) {
+			if (!task.getDeadline().isBefore(ZonedDateTime.now())) {
+				request.setAttribute("title", "Automatische Auswertung erst nach der Deadline möglich");
+				request.setAttribute("message", "<div class=mid><a href=\"" + Util.generateHTMLLink(TaskManager.class.getSimpleName() + "?action=editTask&lecture=" + task.getTaskGroup().getLecture().getId() + "&taskid=" + task.getTaskid(), response) + "\">zurück zur Aufgabe</a></div>");
+				getServletContext().getNamedDispatcher(MessageView.class.getSimpleName()).forward(request, response);
+				return;
+			}
+			session.beginTransaction();
+			for (AnswerClass answerClass : answerClassDAO.getAnswerClassesForTask(task)) {
+				session.lock(answerClass, LockMode.PESSIMISTIC_WRITE);
+				answerClass.setNeedsToRun(false);
+			}
+			session.getTransaction().commit();
+			try {
+				AnswerClassBatchRunner.runForTask(session, Configuration.getInstance().getDataPath(), task);
+			} catch (Exception e) {
+				LOG.error("Failed to execute answer class batch for task {}", task.getTaskid(), e);
+				request.setAttribute("title", "Beim automatischen Auswerten der Antwortklassen ist ein Fehler aufgetreten.");
+				getServletContext().getNamedDispatcher(MessageView.class.getSimpleName()).forward(request, response);
+				return;
+			}
 			response.sendRedirect(Util.generateRedirectURL(TaskManager.class.getSimpleName() + "?action=editTask&lecture=" + task.getTaskGroup().getLecture().getId() + "&taskid=" + task.getTaskid(), response));
 		} else {
 			request.setAttribute("title", "Ungültiger Aufruf");

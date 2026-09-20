@@ -25,6 +25,8 @@ import java.util.Set;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -59,6 +61,14 @@ public class AnswerClass implements Serializable {
 	private String description;
 	@Column(nullable = false, length = 50)
 	private String detectionType = "";
+	/**
+	 * Task-wide programming language (synced across all answer classes of the same task by
+	 * {@code AnswerClassManager}). Selects the {@code LanguageProvider} in
+	 * {@code AnswerClassRunner}.
+	 */
+	@Enumerated(EnumType.STRING)
+	@Column(nullable = false, length = 32)
+	private ProgrammingLanguage programmingLanguage = ProgrammingLanguage.JAVA;
 	@Column(nullable = false)
 	private int timesRunnableByStudents = 3;
 	@Column(nullable = false)
@@ -85,10 +95,15 @@ public class AnswerClass implements Serializable {
 	protected AnswerClass() {}
 
 	public AnswerClass(Task task, String title, String description, String detectionType, int timesRunnableByStudents, boolean giveDetailsToStudents) {
+		this(task, title, description, detectionType, ProgrammingLanguage.JAVA, timesRunnableByStudents, giveDetailsToStudents);
+	}
+
+	public AnswerClass(Task task, String title, String description, String detectionType, ProgrammingLanguage programmingLanguage, int timesRunnableByStudents, boolean giveDetailsToStudents) {
 		this.task = task;
 		this.title = title;
 		this.description = description;
 		this.detectionType = detectionType;
+		this.programmingLanguage = programmingLanguage == null ? ProgrammingLanguage.JAVA : programmingLanguage;
 		setTimesRunnableByStudents(timesRunnableByStudents);
 		this.giveDetailsToStudents = giveDetailsToStudents;
 	}
@@ -131,6 +146,14 @@ public class AnswerClass implements Serializable {
 
 	public void setDetectionType(String detectionType) {
 		this.detectionType = detectionType;
+	}
+
+	public ProgrammingLanguage getProgrammingLanguage() {
+		return programmingLanguage;
+	}
+
+	public void setProgrammingLanguage(ProgrammingLanguage programmingLanguage) {
+		this.programmingLanguage = programmingLanguage == null ? ProgrammingLanguage.JAVA : programmingLanguage;
 	}
 
 	public int getTimesRunnableByStudents() {

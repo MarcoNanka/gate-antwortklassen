@@ -1,0 +1,152 @@
+@startuml
+skinparam shadowing false
+
+title Antwortklassen-Pipeline (sprachneutral, Soll-Zustand)
+
+start
+
+:Trigger setzen\n(STUDENT / TUTOR / BATCH);
+
+note right
+  Run-Limit nur im Web-Controller (STUDENT),
+  nicht Bestandteil dieser Pipeline.
+end note
+
+:Abgabe laden;
+
+if (Dateien vorhanden?) then (nein)
+  stop
+endif
+
+:PipelineRun anlegen;
+:LanguageProvider wählen\n(z.B. Java, Python, Haskell);
+note right
+  **LanguageProvider** = Sprach-Plugin
+
+  Wird einmal pro Lauf gewaehlt (z.B. aus
+  der Aufgaben-Sprache: Java, Python, ...).
+
+  **Aufgaben:**
+  1) Workspace-Layout (was wohin kopieren)
+  2) EXECUTION_ENV starten (Java: Docker)
+  3) Artefakte lazy erzeugen + im Context cachen
+  4) Abhaengigkeiten zwischen Artefakten kennen
+
+  **Beispiel Java:**
+  SYNTAX = Checkstyle/Diagnostics
+  AST    = JDK parse
+  BUILD  = javac (in Docker)
+  RUN    = JUnit (in Docker)
+  Abhaengig: BUILD -> RUN; BUILD ok -> AST
+
+  **Beispiel Python:**
+  SYNTAX = ruff, AST = ast-Modul
+  RUN = pytest, kein BUILD
+
+  Pipeline fragt nur: "Brauche Artefakt X"
+  Provider entscheidet: "So mache ich X
+  in dieser Sprache — oder geht nicht."
+end note
+:EvaluationContext erstellen\n(Trigger + Artefakt-Cache);
+
+note right
+  Lazy-Artefakte (Blackbox):
+  SYNTAX, AST, BUILD, RUN, PROFILE
+  EXECUTION_ENV (Sandbox)
+
+  Abhängigkeiten je LanguageProvider.
+end note
+
+:Workspace zusammenstellen;
+note right
+  **Workspace zusammenstellen**
+
+  Baut die Datei-Umgebung (1x pro Pipeline-Lauf, vor EXECUTION_ENV).
+
+  1. Temp-Ordner anlegen
+  2. Abgabe -> student/
+     (nur eingereichte Dateien)
+  3. Task-Kontext -> administrative/
+     (advisorfiles, Libs, Skripte —
+      was der LanguageProvider braucht)
+  4. Provider entscheidet, welche Dateien nötig sind
+
+  **Wichtig:** Wird JETZT IMMER ausgeführt!
+  Auch reine AST-/SYNTAX-Checker benötigen oft den
+  Task-Kontext (z.B. für Typ- und Symbolauflösung).
+
+  **Hinweis ("BUILD erzeugen" ist entfallen):**
+  Das explizite Vorgeschaltete Kompilieren entfällt.
+  Das Kompilieren ist entweder selbst eine eigene AC
+  oder wird erst lazy über den LanguageProvider getriggert,
+  sobald eine AC das BUILD-Artefakt tatsächlich benötigt.
+end note
+
+:EXECUTION_ENV starten\n(Sandbox, 1x pro Lauf);
+note right
+  **EXECUTION_ENV (Sandbox)**
+  Java-Beispiel: safe-docker
+
+  **Bewusste Architektur-Entscheidung:**
+  Wird hier bewusst statisch vor der Schleife gestartet.
+  
+  *Theoretisch* könnte das Starten auch erst lazy erfolgen,
+  falls nur reine AST-/SYNTAX-ACs laufen.
+  
+  *Praktisch* benötigen aber fast alle Korrekturläufe
+  mindestens ein BUILD- oder RUN-Artefakt. Die Einsparung
+  komplexen State-Managements im LanguageProvider wiegt
+  schwerer als dieser seltene Randfall.
+end note
+
+while (Weitere Antwortklasse?) is (ja)
+
+  :Nächste AC;
+
+  if (Für Trigger sichtbar?) then (nein)
+    :Kein Eintrag;
+  else (ja)
+
+    if (Prerequisites erfüllt?) then (nein)
+      :SKIPPED speichern;
+    else (ja)
+
+      if (MANUAL?) then (ja)
+        :PENDING speichern;
+      else (nein)
+
+        :Benötigte Artefakte ermitteln\n(CheckerRegistry);
+        :LanguageProvider:\nAbhängigkeiten auflösen\n(lazy, max. 1x je Lauf);
+
+        if (Artefakte verfügbar?) then (nein)
+          :SKIPPED speichern;
+        else (ja)
+          :Checker ausführen;
+          :Ergebnis speichern\n(mit source je Trigger);
+        endif
+
+      endif
+    endif
+  endif
+
+endwhile (nein)
+
+note right
+  Sichtbarkeit:
+  STUDENT: timesRunnableByStudents > 0
+  TUTOR/BATCH: alle ACs
+
+  Java Provider-Policy:
+  BUILD -> RUN, PROFILE
+  BUILD ok nötig vor AST, SYNTAX
+  Task-Kontext nur bei BUILD/RUN
+
+  source: STUDENT_PREVIEW / AUTOMATIC / MANUAL
+end note
+
+:EXECUTION_ENV aufräumen;
+:Ergebnisse anzeigen;
+
+stop
+
+@enduml

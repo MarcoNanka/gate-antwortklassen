@@ -20,6 +20,8 @@ package de.tuclausthal.submissioninterface.answerclasses;
 
 import java.lang.invoke.MethodHandles;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 import org.hibernate.Session;
 import org.hibernate.Transaction;
@@ -51,15 +53,24 @@ public final class AnswerClassBatchRunner {
 	public static void runBatch(Session session, Path dataPath) {
 		Task task;
 		while ((task = DAOFactory.AnswerClassDAOIf(session).takeTaskForAnswerClassBatchTransacted()) != null) {
-			for (Submission submission : task.getSubmissions()) {
-				Transaction tx = session.beginTransaction();
-				try {
-					new AnswerClassRunner(session).run(PipelineTrigger.BATCH, submission, dataPath);
-					tx.commit();
-				} catch (Exception e) {
-					tx.rollback();
-					LOG.error("Failed to run answer class batch for submission {} (task {})", submission.getSubmissionid(), task.getTaskid(), e);
-				}
+			runForTask(session, dataPath, task);
+		}
+	}
+
+	/**
+	 * Runs the pipeline with {@link PipelineTrigger#BATCH} for every submission of {@code task}.
+	 * Each submission is its own transaction. Callers own claiming/{@code needsToRun}.
+	 */
+	public static void runForTask(Session session, Path dataPath, Task task) {
+		List<Submission> submissions = new ArrayList<>(task.getSubmissions());
+		for (Submission submission : submissions) {
+			Transaction tx = session.beginTransaction();
+			try {
+				new AnswerClassRunner(session).run(PipelineTrigger.BATCH, submission, dataPath);
+				tx.commit();
+			} catch (Exception e) {
+				tx.rollback();
+				LOG.error("Failed to run answer class batch for submission {} (task {})", submission.getSubmissionid(), task.getTaskid(), e);
 			}
 		}
 	}

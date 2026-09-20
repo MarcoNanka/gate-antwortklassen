@@ -482,6 +482,7 @@ CREATE TABLE IF NOT EXISTS `answerclasses` (
   `title` varchar(255) NOT NULL DEFAULT '',
   `description` text DEFAULT NULL,
   `detectionType` varchar(50) NOT NULL DEFAULT '',
+  `programmingLanguage` varchar(32) NOT NULL DEFAULT 'JAVA',
   `timesRunnableByStudents` int(11) NOT NULL DEFAULT 3,
   `giveDetailsToStudents` tinyint(1) NOT NULL DEFAULT 1,
   `needsToRun` tinyint(1) NOT NULL DEFAULT 1,

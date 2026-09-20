@@ -26,4 +26,21 @@ public final class JavaDetectionTypes {
 	public static final String WHILE_LOOP = "WHILE_LOOP";
 
 	private JavaDetectionTypes() {}
+
+	public static boolean isKnown(String detectionType) {
+		return COMPILE_OK.equals(detectionType) || WHILE_LOOP.equals(detectionType);
+	}
+
+	/**
+	 * Advisor-facing label; unknown values are shown as stored.
+	 */
+	public static String displayName(String detectionType) {
+		if (COMPILE_OK.equals(detectionType)) {
+			return "Code kompiliert (javac)";
+		}
+		if (WHILE_LOOP.equals(detectionType)) {
+			return "enthält while-Schleife";
+		}
+		return detectionType == null ? "" : detectionType;
+	}
 }

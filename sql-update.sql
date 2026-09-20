@@ -165,6 +165,7 @@ CREATE TABLE IF NOT EXISTS `answerclasses` (
   `title` varchar(255) NOT NULL DEFAULT '',
   `description` text DEFAULT NULL,
   `detectionType` varchar(50) NOT NULL DEFAULT '',
+  `programmingLanguage` varchar(32) NOT NULL DEFAULT 'JAVA',
   `timesRunnableByStudents` int(11) NOT NULL DEFAULT 3,
   `giveDetailsToStudents` tinyint(1) NOT NULL DEFAULT 1,
   `needsToRun` tinyint(1) NOT NULL DEFAULT 1,
@@ -212,3 +213,6 @@ CREATE TABLE IF NOT EXISTS `answerclassresults` (
   CONSTRAINT `FK_answerclassresults_submission` FOREIGN KEY (`submissionid`) REFERENCES `submissions` (`submissionid`) ON DELETE CASCADE ON UPDATE RESTRICT,
   CONSTRAINT `FK_answerclassresults_evaluatedBy` FOREIGN KEY (`evaluatedBy`) REFERENCES `users` (`uid`) ON DELETE SET NULL ON UPDATE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+-- Antwortklassen: shared programming language (task-wide, synced via advisor form)
+ALTER TABLE `answerclasses` ADD COLUMN IF NOT EXISTS `programmingLanguage` varchar(32) NOT NULL DEFAULT 'JAVA';

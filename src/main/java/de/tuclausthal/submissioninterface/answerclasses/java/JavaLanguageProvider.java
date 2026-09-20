@@ -106,7 +106,7 @@ public class JavaLanguageProvider implements LanguageProvider {
 		if (sandboxAvailable) {
 			LOG.debug("safe-docker is available - BUILD will run sandboxed");
 		} else {
-			LOG.debug("safe-docker is not installed - falling back to host javac for BUILD");
+			LOG.warn("safe-docker is not installed; Java BUILD falls back to host javac (same as JavaSyntaxTest). Isolated evaluation requires the safe-docker setup from README.md.");
 		}
 	}
 

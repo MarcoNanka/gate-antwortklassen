@@ -78,8 +78,9 @@ public class AnswerClassRunCountDAO extends AbstractDAO implements AnswerClassRu
 		if (answerClasses.isEmpty()) {
 			return 0;
 		}
-		// All answer classes of a task share one joint request limit.
-		return answerClasses.get(0).getTimesRunnableByStudents();
+		// Shared budget for the task: after AnswerClassManager saves, all ACs carry the same
+		// value. Use max() so briefly diverging legacy rows still pick a defined limit.
+		return answerClasses.stream().mapToInt(AnswerClass::getTimesRunnableByStudents).max().orElse(0);
 	}
 
 	private AnswerClassRunCount getRunCountLocked(Task task, User user) {

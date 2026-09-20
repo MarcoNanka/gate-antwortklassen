@@ -21,6 +21,7 @@ package de.tuclausthal.submissioninterface.persistence.dao;
 import java.util.List;
 
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClass;
+import de.tuclausthal.submissioninterface.persistence.datamodel.ProgrammingLanguage;
 import de.tuclausthal.submissioninterface.persistence.datamodel.Task;
 
 /**
@@ -38,6 +39,24 @@ public interface AnswerClassDAOIf {
 	AnswerClass getAnswerClassLocked(int id);
 
 	List<AnswerClass> getAnswerClassesForTask(Task task);
+
+	/**
+	 * Writes the same student run budget onto every answer class of {@code task}. One student
+	 * button runs all visible answer classes together, so the limit is shared (not per AC).
+	 */
+	void setTimesRunnableByStudentsForTask(Task task, int timesRunnableByStudents);
+
+	/**
+	 * Writes the same {@link ProgrammingLanguage} onto every answer class of {@code task}
+	 * (task-wide setting maintained via the advisor answer-class form).
+	 */
+	void setProgrammingLanguageForTask(Task task, ProgrammingLanguage programmingLanguage);
+
+	/**
+	 * Resolves the shared programming language for {@code task} from its answer classes
+	 * (defaults to {@link ProgrammingLanguage#JAVA} if none exist).
+	 */
+	ProgrammingLanguage getProgrammingLanguageForTask(Task task);
 
 	void deleteAnswerClass(AnswerClass answerClass);
 

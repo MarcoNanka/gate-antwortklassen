@@ -33,6 +33,7 @@ import org.hibernate.Transaction;
 import de.tuclausthal.submissioninterface.persistence.dao.AnswerClassDAOIf;
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClass;
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClass_;
+import de.tuclausthal.submissioninterface.persistence.datamodel.ProgrammingLanguage;
 import de.tuclausthal.submissioninterface.persistence.datamodel.Task;
 import de.tuclausthal.submissioninterface.persistence.datamodel.Task_;
 
@@ -72,6 +73,34 @@ public class AnswerClassDAO extends AbstractDAO implements AnswerClassDAOIf {
 		criteria.where(builder.equal(root.get(AnswerClass_.task), task));
 		criteria.orderBy(builder.asc(root.get(AnswerClass_.id)));
 		return session.createQuery(criteria).list();
+	}
+
+	@Override
+	public void setTimesRunnableByStudentsForTask(Task task, int timesRunnableByStudents) {
+		int limit = Math.max(0, timesRunnableByStudents);
+		for (AnswerClass answerClass : getAnswerClassesForTask(task)) {
+			getSession().lock(answerClass, LockMode.PESSIMISTIC_WRITE);
+			answerClass.setTimesRunnableByStudents(limit);
+		}
+	}
+
+	@Override
+	public void setProgrammingLanguageForTask(Task task, ProgrammingLanguage programmingLanguage) {
+		ProgrammingLanguage language = programmingLanguage == null ? ProgrammingLanguage.JAVA : programmingLanguage;
+		for (AnswerClass answerClass : getAnswerClassesForTask(task)) {
+			getSession().lock(answerClass, LockMode.PESSIMISTIC_WRITE);
+			answerClass.setProgrammingLanguage(language);
+		}
+	}
+
+	@Override
+	public ProgrammingLanguage getProgrammingLanguageForTask(Task task) {
+		List<AnswerClass> answerClasses = getAnswerClassesForTask(task);
+		if (answerClasses.isEmpty()) {
+			return ProgrammingLanguage.JAVA;
+		}
+		ProgrammingLanguage language = answerClasses.get(0).getProgrammingLanguage();
+		return language == null ? ProgrammingLanguage.JAVA : language;
 	}
 
 	@Override

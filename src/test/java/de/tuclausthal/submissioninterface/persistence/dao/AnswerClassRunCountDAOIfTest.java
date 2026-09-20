@@ -48,6 +48,19 @@ class AnswerClassRunCountDAOIfTest extends BasicTest {
 	}
 
 	@Test
+	void testCanStillRunXTimesUsesMaxWhenSiblingsDiverge() {
+		Transaction tx = session.beginTransaction();
+		Task task = DAOFactory.TaskDAOIf(session).getTask(3);
+		User user = DAOFactory.UserDAOIf(session).getUser(5);
+
+		DAOFactory.AnswerClassDAOIf(session).getAnswerClassLocked(1).setTimesRunnableByStudents(2);
+		DAOFactory.AnswerClassDAOIf(session).getAnswerClassLocked(2).setTimesRunnableByStudents(7);
+		assertEquals(7, DAOFactory.AnswerClassRunCountDAOIf(session).canStillRunXTimes(task, user));
+
+		tx.rollback();
+	}
+
+	@Test
 	void testIncrementUntilLimit() {
 		Transaction tx = session.beginTransaction();
 		Task task = DAOFactory.TaskDAOIf(session).getTask(3);

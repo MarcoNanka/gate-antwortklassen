@@ -20,6 +20,7 @@ package de.tuclausthal.submissioninterface.servlets.view;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -31,6 +32,7 @@ import jakarta.servlet.http.HttpServletResponse;
 
 import org.hibernate.Session;
 
+import de.tuclausthal.submissioninterface.answerclasses.java.JavaDetectionTypes;
 import de.tuclausthal.submissioninterface.dynamictasks.DynamicTaskStrategieFactory;
 import de.tuclausthal.submissioninterface.persistence.dao.DAOFactory;
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClass;
@@ -500,9 +502,16 @@ public class TaskManagerView extends HttpServlet {
 				out.println("<p class=mid><a href=\"" + Util.generateHTMLLink(AnswerClassManager.class.getSimpleName() + "?action=newAnswerClass&taskid=" + task.getTaskid(), response) + "\">Antwortklasse hinzufügen</a></p>");
 				List<AnswerClass> answerClasses = DAOFactory.AnswerClassDAOIf(session).getAnswerClassesForTask(task);
 				if (!answerClasses.isEmpty()) {
+					if (task.getDeadline().isBefore(ZonedDateTime.now())) {
+						out.println("<form class=mid method=post action=\"" + Util.generateHTMLLink(AnswerClassManager.class.getSimpleName(), response) + "\">");
+						out.println("<input type=hidden name=taskid value=\"" + task.getTaskid() + "\">");
+						out.println("<input type=hidden name=action value=executeAnswerClassBatch>");
+						out.println("<input type=submit value=\"Alle Abgaben jetzt automatisch auswerten\">");
+						out.println("</form>");
+					}
 					out.println("<ul>");
 					for (AnswerClass answerClass : answerClasses) {
-						out.println("<li>&quot;" + Util.escapeHTML(answerClass.getTitle()) + "&quot; (" + Util.escapeHTML(answerClass.getDetectionType()) + ")<br>");
+						out.println("<li>&quot;" + Util.escapeHTML(answerClass.getTitle()) + "&quot; (" + Util.escapeHTML(JavaDetectionTypes.displayName(answerClass.getDetectionType())) + ", " + Util.escapeHTML(answerClass.getProgrammingLanguage().getDisplayName()) + ")<br>");
 						out.println("# ausführbar für Studierende: " + answerClass.getTimesRunnableByStudents() + " (" + (answerClass.isGiveDetailsToStudents() ? "mit" : "ohne") + " Details)<br>");
 						if (!answerClass.getPrerequisites().isEmpty()) {
 							out.println("Voraussetzungen: " + answerClass.getPrerequisites().stream().map(prerequisite -> Util.escapeHTML(prerequisite.getTitle())).collect(Collectors.joining(", ")) + "<br>");

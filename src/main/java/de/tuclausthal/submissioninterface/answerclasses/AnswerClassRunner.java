@@ -28,6 +28,7 @@ import de.tuclausthal.submissioninterface.answerclasses.java.JavaCheckerRegistry
 import de.tuclausthal.submissioninterface.answerclasses.java.JavaLanguageProvider;
 import de.tuclausthal.submissioninterface.persistence.dao.DAOFactory;
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClass;
+import de.tuclausthal.submissioninterface.persistence.datamodel.ProgrammingLanguage;
 import de.tuclausthal.submissioninterface.persistence.datamodel.Submission;
 import de.tuclausthal.submissioninterface.persistence.datamodel.Task;
 import de.tuclausthal.submissioninterface.util.TaskPath;
@@ -47,9 +48,9 @@ import de.tuclausthal.submissioninterface.util.Util;
  * (which belong in the web controller, not here) and result persistence in one atomic unit,
  * and makes this class trivially testable with a rollback.</p>
  *
- * <p><b>Language selection:</b> only Java exists right now, so {@link #chooseLanguageProvider}
- * always returns a {@link JavaLanguageProvider}. Once more languages are added, this is the
- * single seam to dispatch on a real task/language attribute instead.</p>
+ * <p><b>Language selection:</b> taken from the task's answer classes ({@link ProgrammingLanguage},
+ * kept in sync by the advisor form). Currently only {@link ProgrammingLanguage#JAVA} has a
+ * provider; further languages plug in here.</p>
  */
 public class AnswerClassRunner {
 	private final Session session;
@@ -59,7 +60,7 @@ public class AnswerClassRunner {
 	}
 
 	/**
-	 * Loads the answer classes for {@code submission}'s task, assembles the Java workspace
+	 * Loads the answer classes for {@code submission}'s task, assembles the workspace
 	 * from disk, runs the pipeline, and persists every result via {@link DaoResultSink}.
 	 *
 	 * @param trigger who/what started this run (STUDENT/TUTOR/BATCH)
@@ -79,25 +80,30 @@ public class AnswerClassRunner {
 		List<AnswerClass> answerClasses = DAOFactory.AnswerClassDAOIf(session).getAnswerClassesForTask(task);
 		List<AnswerClassToEvaluate> answerClassesToEvaluate = AnswerClassMapper.map(answerClasses);
 
-		LanguageProvider languageProvider = chooseLanguageProvider(task, dataPath, submissionPath);
-		CheckerRegistry checkerRegistry = chooseCheckerRegistry(task);
+		ProgrammingLanguage language = DAOFactory.AnswerClassDAOIf(session).getProgrammingLanguageForTask(task);
+		LanguageProvider languageProvider = chooseLanguageProvider(language, task, dataPath, submissionPath);
+		CheckerRegistry checkerRegistry = chooseCheckerRegistry(language);
 		ResultSink resultSink = new DaoResultSink(session, submission, answerClasses);
 
 		return new AnswerClassPipeline().run(trigger, hasSubmissionFiles, answerClassesToEvaluate, languageProvider, checkerRegistry, resultSink);
 	}
 
 	/**
-	 * Chooses the {@link LanguageProvider} for one pipeline run. Java-only for now.
+	 * Chooses the {@link LanguageProvider} for one pipeline run.
 	 */
-	private static LanguageProvider chooseLanguageProvider(Task task, Path dataPath, Path submissionPath) {
+	private static LanguageProvider chooseLanguageProvider(ProgrammingLanguage language, Task task, Path dataPath, Path submissionPath) {
 		Path administrativePath = Util.constructPath(dataPath, task, TaskPath.ADVISORFILES);
-		return new JavaLanguageProvider(submissionPath, administrativePath);
+		return switch (language == null ? ProgrammingLanguage.JAVA : language) {
+			case JAVA -> new JavaLanguageProvider(submissionPath, administrativePath);
+		};
 	}
 
 	/**
-	 * Chooses the {@link CheckerRegistry} matching the {@link LanguageProvider} above.
+	 * Chooses the {@link CheckerRegistry} matching the language above.
 	 */
-	private static CheckerRegistry chooseCheckerRegistry(Task task) {
-		return JavaCheckerRegistry.createDefault();
+	private static CheckerRegistry chooseCheckerRegistry(ProgrammingLanguage language) {
+		return switch (language == null ? ProgrammingLanguage.JAVA : language) {
+			case JAVA -> JavaCheckerRegistry.createDefault();
+		};
 	}
 }
