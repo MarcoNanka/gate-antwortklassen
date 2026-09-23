@@ -21,7 +21,9 @@ package de.tuclausthal.submissioninterface.servlets.controller;
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
 import java.time.ZonedDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
@@ -35,6 +37,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import de.tuclausthal.submissioninterface.answerclasses.AnswerClassRunner;
+import de.tuclausthal.submissioninterface.answerclasses.PipelineResult;
 import de.tuclausthal.submissioninterface.answerclasses.PipelineTrigger;
 import de.tuclausthal.submissioninterface.persistence.dao.AnswerClassResultDAOIf;
 import de.tuclausthal.submissioninterface.persistence.dao.AnswerClassRunCountDAOIf;
@@ -44,6 +47,7 @@ import de.tuclausthal.submissioninterface.persistence.dao.SubmissionDAOIf;
 import de.tuclausthal.submissioninterface.persistence.dao.TaskDAOIf;
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClass;
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResult;
+import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResultStatus;
 import de.tuclausthal.submissioninterface.persistence.datamodel.Participation;
 import de.tuclausthal.submissioninterface.persistence.datamodel.Submission;
 import de.tuclausthal.submissioninterface.persistence.datamodel.Task;
@@ -55,22 +59,21 @@ import de.tuclausthal.submissioninterface.util.Configuration;
 import de.tuclausthal.submissioninterface.util.Util;
 
 /**
- * Controller-Servlet for students requesting an answer-class run on their own submission
- * (trigger {@code STUDENT}, result source {@code STUDENT_PREVIEW}).
+ * Controller-Servlet for students requesting an answer-class run on their own submission.
  *
- * <p>Mirrors {@code PerformStudentTest}, but runs synchronously (no background executor/polling
- * needed — unlike JUnit-based tests, the Java checkers here are lightweight compile+AST checks)
- * and follows the same POST-triggers-then-redirect-to-GET (PRG) pattern so a page reload never
- * re-triggers a run.</p>
+ * <p>The run is a one-time preview: it is not written to {@code answerclassresults}. The result
+ * page shows it once after the redirect; a reload does not. After the deadline the task page
+ * shows batch results and tutor grades only.</p>
  *
- * <p>Per {@code .cursor/rules/antwortklassen.mdc}: the student run-limit check
- * ({@code AnswerClassRunCountDAOIf}) lives here in the web controller, not in
- * {@code AnswerClassPipeline}.</p>
+ * <p>Mirrors {@code PerformStudentTest} in that it runs synchronously and uses
+ * POST-then-redirect so a reload never starts another run. The run-limit check lives here,
+ * not in {@code AnswerClassPipeline}.</p>
  */
 @GATEController
 public class PerformStudentAnswerClasses extends HttpServlet {
 	private static final long serialVersionUID = 1L;
 	private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
+	private static final String PREVIEW_SESSION_KEY = "studentAnswerClassPreview-";
 
 	@Override
 	public void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException {
@@ -103,12 +106,18 @@ public class PerformStudentAnswerClasses extends HttpServlet {
 		List<AnswerClass> answerClasses = DAOFactory.AnswerClassDAOIf(session).getAnswerClassesForTask(task);
 		List<AnswerClassResult> results = DAOFactory.AnswerClassResultDAOIf(session).getResultsForSubmission(submission);
 		int runnable = DAOFactory.AnswerClassRunCountDAOIf(session).canStillRunXTimes(task, RequestAdapter.getUser(request));
+		String previewKey = PREVIEW_SESSION_KEY + task.getTaskid();
+		Object preview = request.getSession().getAttribute(previewKey);
+		request.getSession().removeAttribute(previewKey);
 
 		request.setAttribute("task", task);
 		request.setAttribute("submission", submission);
 		request.setAttribute("answerClasses", answerClasses);
 		request.setAttribute("results", results);
 		request.setAttribute("runnable", runnable);
+		if (preview instanceof Map<?, ?>) {
+			request.setAttribute("answerClassPreview", preview);
+		}
 		getServletContext().getNamedDispatcher(ShowAnswerClassResultsView.class.getSimpleName()).forward(request, response);
 	}
 
@@ -157,8 +166,9 @@ public class PerformStudentAnswerClasses extends HttpServlet {
 			getServletContext().getNamedDispatcher(MessageView.class.getSimpleName()).forward(request, response);
 			return;
 		}
+		List<PipelineResult> previewResults;
 		try {
-			new AnswerClassRunner(session).run(PipelineTrigger.STUDENT, submission, Configuration.getInstance().getDataPath());
+			previewResults = new AnswerClassRunner(session).preview(PipelineTrigger.STUDENT, submission, Configuration.getInstance().getDataPath());
 			tx.commit();
 		} catch (Exception e) {
 			tx.rollback();
@@ -167,6 +177,11 @@ public class PerformStudentAnswerClasses extends HttpServlet {
 			getServletContext().getNamedDispatcher(MessageView.class.getSimpleName()).forward(request, response);
 			return;
 		}
+		Map<Integer, AnswerClassResultStatus> previewStatuses = new HashMap<>();
+		for (PipelineResult previewResult : previewResults) {
+			previewStatuses.put(previewResult.getAnswerClassId(), previewResult.getStatus());
+		}
+		request.getSession().setAttribute(PREVIEW_SESSION_KEY + task.getTaskid(), previewStatuses);
 		response.sendRedirect(Util.generateRedirectURL(PerformStudentAnswerClasses.class.getSimpleName() + "?taskid=" + task.getTaskid(), response));
 	}
 }

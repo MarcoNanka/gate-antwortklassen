@@ -20,6 +20,12 @@ package de.tuclausthal.submissioninterface.servlets.controller;
 
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
+import java.time.ZonedDateTime;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
@@ -31,12 +37,15 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import de.tuclausthal.submissioninterface.answerclasses.AnswerClassRunner;
-import de.tuclausthal.submissioninterface.answerclasses.PipelineTrigger;
+import de.tuclausthal.submissioninterface.answerclasses.AnswerClassToEvaluate;
+import de.tuclausthal.submissioninterface.answerclasses.PipelineResult;
+import de.tuclausthal.submissioninterface.answerclasses.TutorAnswerClassPreview;
 import de.tuclausthal.submissioninterface.persistence.dao.AnswerClassDAOIf;
 import de.tuclausthal.submissioninterface.persistence.dao.DAOFactory;
 import de.tuclausthal.submissioninterface.persistence.dao.ParticipationDAOIf;
 import de.tuclausthal.submissioninterface.persistence.dao.SubmissionDAOIf;
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClass;
+import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResult;
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResultSource;
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResultStatus;
 import de.tuclausthal.submissioninterface.persistence.datamodel.Participation;
@@ -52,12 +61,15 @@ import de.tuclausthal.submissioninterface.util.Util;
 /**
  * Controller-Servlet for tutors on one submission's answer classes:
  * <ul>
- * <li>no {@code answerclassid} parameter: run the full pipeline (trigger {@code TUTOR}) on the
- * given submission - {@code AnswerClassPipeline#sourceForTrigger} already maps that to result
- * source {@code MANUAL}, so no extra mapping is needed here;</li>
- * <li>{@code answerclassid} + {@code status} parameters: manually set/override one answer
- * class's result (e.g. resolve a {@code PENDING} manual answer class), source
- * {@code MANUAL}, {@code evaluatedBy} the current tutor.</li>
+ * <li>no {@code answerclassid} parameter: run the pipeline as a tutor preview. Results are
+ * kept in the HTTP session together with the submission's {@code lastModified} and are not
+ * written to {@code answerclassresults}. A later view of the submission shows them only while
+ * that timestamp is unchanged. The button is refused once every automatic answer class of
+ * this submission already has a batch result.</li>
+ * <li>{@code answerclassid} + {@code status} parameters: manually set one answer class whose
+ * detection type is {@code MANUAL}, and only after the deadline or a final submission.
+ * Source {@code MANUAL}, {@code evaluatedBy} the current tutor. Automatic answer classes
+ * cannot be overwritten here.</li>
  * </ul>
  * Mirrors the "Test auf Abgabe ausführen"-form from {@code PerformTest}, but - like
  * {@code AnswerClassRunner} in general - does not touch the {@code Test}/{@code TestExecutor}
@@ -97,6 +109,16 @@ public class PerformTutorAnswerClasses extends HttpServlet {
 				getServletContext().getNamedDispatcher(MessageView.class.getSimpleName()).forward(request, response);
 				return;
 			}
+			if (!AnswerClassToEvaluate.MANUAL_DETECTION_TYPE.equals(answerClass.getDetectionType())) {
+				request.setAttribute("title", "Diese Antwortklasse kann nicht manuell gesetzt werden.");
+				getServletContext().getNamedDispatcher(MessageView.class.getSimpleName()).forward(request, response);
+				return;
+			}
+			if (!(task.getDeadline().isBefore(ZonedDateTime.now()) || (task.isAllowPrematureSubmissionClosing() && submission.isClosed()))) {
+				request.setAttribute("title", "Manuelle Bewertung ist erst nach Ablauf der Deadline oder nach endgültiger Abgabe möglich.");
+				getServletContext().getNamedDispatcher(MessageView.class.getSimpleName()).forward(request, response);
+				return;
+			}
 			AnswerClassResultStatus status;
 			try {
 				status = AnswerClassResultStatus.valueOf(request.getParameter("status"));
@@ -107,20 +129,42 @@ public class PerformTutorAnswerClasses extends HttpServlet {
 			session.beginTransaction();
 			DAOFactory.AnswerClassResultDAOIf(session).storeResult(answerClass, submission, status, request.getParameter("details"), AnswerClassResultSource.MANUAL, RequestAdapter.getUser(request));
 			session.getTransaction().commit();
-		} else {
-			session.beginTransaction();
-			try {
-				new AnswerClassRunner(session).run(PipelineTrigger.TUTOR, submission, Configuration.getInstance().getDataPath());
-				session.getTransaction().commit();
-			} catch (Exception e) {
-				session.getTransaction().rollback();
-				LOG.error("Failed to run answer classes for submission {}", submission.getSubmissionid(), e);
-				request.setAttribute("title", "Beim Ausführen der Antwortklassen ist ein Fehler aufgetreten.");
-				getServletContext().getNamedDispatcher(MessageView.class.getSimpleName()).forward(request, response);
-				return;
-			}
+			response.sendRedirect(Util.generateRedirectURL(ShowSubmission.class.getSimpleName() + "?sid=" + submission.getSubmissionid(), response));
+			return;
 		}
 
+		List<AnswerClass> answerClasses = DAOFactory.AnswerClassDAOIf(session).getAnswerClassesForTask(task);
+		List<AnswerClassResult> storedResults = DAOFactory.AnswerClassResultDAOIf(session).getResultsForSubmission(submission);
+		Map<Integer, AnswerClassResult> storedByAnswerClassId = storedResults.stream().collect(Collectors.toMap(result -> result.getAnswerClass().getId(), Function.identity()));
+		List<String> submittedFiles = Util.listFilesAsRelativeStringListSorted(Util.constructPath(Configuration.getInstance().getDataPath(), submission));
+		if (submittedFiles.isEmpty()) {
+			request.setAttribute("title", "Keine Dateien in der Abgabe.");
+			getServletContext().getNamedDispatcher(MessageView.class.getSimpleName()).forward(request, response);
+			return;
+		}
+		if (!TutorAnswerClassPreview.isAvailable(answerClasses, storedByAnswerClassId)) {
+			request.setAttribute("title", "Die automatischen Antwortklassen dieser Abgabe sind bereits ausgewertet.");
+			getServletContext().getNamedDispatcher(MessageView.class.getSimpleName()).forward(request, response);
+			return;
+		}
+		ZonedDateTime evaluatedAt = submission.getLastModified();
+		List<PipelineResult> previewResults;
+		try {
+			previewResults = new AnswerClassRunner(session).preview(submission, Configuration.getInstance().getDataPath());
+		} catch (Exception e) {
+			LOG.error("Failed to preview answer classes for submission {}", submission.getSubmissionid(), e);
+			request.setAttribute("title", "Beim Prüfen der Antwortklassen ist ein Fehler aufgetreten.");
+			getServletContext().getNamedDispatcher(MessageView.class.getSimpleName()).forward(request, response);
+			return;
+		}
+		session.refresh(submission);
+		String previewKey = TutorAnswerClassPreview.sessionKey(submission.getSubmissionid());
+		if (Objects.equals(evaluatedAt, submission.getLastModified())) {
+			Map<Integer, PipelineResult> byAnswerClassId = previewResults.stream().collect(Collectors.toMap(PipelineResult::getAnswerClassId, Function.identity()));
+			request.getSession().setAttribute(previewKey, new TutorAnswerClassPreview.Snapshot(submission.getSubmissionid(), evaluatedAt, byAnswerClassId));
+		} else {
+			request.getSession().removeAttribute(previewKey);
+		}
 		response.sendRedirect(Util.generateRedirectURL(ShowSubmission.class.getSimpleName() + "?sid=" + submission.getSubmissionid(), response));
 	}
 }

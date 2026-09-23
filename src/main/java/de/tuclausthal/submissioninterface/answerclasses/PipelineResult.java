@@ -18,6 +18,7 @@
 
 package de.tuclausthal.submissioninterface.answerclasses;
 
+import java.io.Serializable;
 import java.util.Objects;
 
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResultSource;
@@ -26,7 +27,9 @@ import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResul
 /**
  * One stored/emitted result from a pipeline run (DAO wiring comes later).
  */
-public final class PipelineResult {
+public final class PipelineResult implements Serializable {
+	private static final long serialVersionUID = 1L;
+
 	private final int answerClassId;
 	private final AnswerClassResultStatus status;
 	private final String details;

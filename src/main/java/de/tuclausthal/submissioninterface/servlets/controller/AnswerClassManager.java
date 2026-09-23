@@ -19,9 +19,8 @@
 package de.tuclausthal.submissioninterface.servlets.controller;
 
 import java.io.IOException;
-import java.lang.invoke.MethodHandles;
-import java.time.ZonedDateTime;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 import jakarta.servlet.ServletException;
@@ -31,10 +30,8 @@ import jakarta.servlet.http.HttpServletResponse;
 
 import org.hibernate.LockMode;
 import org.hibernate.Session;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
-import de.tuclausthal.submissioninterface.answerclasses.AnswerClassBatchRunner;
+import de.tuclausthal.submissioninterface.answerclasses.AnswerClassToEvaluate;
 import de.tuclausthal.submissioninterface.answerclasses.java.JavaDetectionTypes;
 import de.tuclausthal.submissioninterface.persistence.dao.AnswerClassDAOIf;
 import de.tuclausthal.submissioninterface.persistence.dao.DAOFactory;
@@ -49,7 +46,6 @@ import de.tuclausthal.submissioninterface.servlets.GATEController;
 import de.tuclausthal.submissioninterface.servlets.RequestAdapter;
 import de.tuclausthal.submissioninterface.servlets.view.AnswerClassManagerFormView;
 import de.tuclausthal.submissioninterface.servlets.view.MessageView;
-import de.tuclausthal.submissioninterface.util.Configuration;
 import de.tuclausthal.submissioninterface.util.Util;
 
 /**
@@ -60,7 +56,6 @@ import de.tuclausthal.submissioninterface.util.Util;
 @GATEController
 public class AnswerClassManager extends HttpServlet {
 	private static final long serialVersionUID = 1L;
-	private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
 	@Override
 	public void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException {
@@ -127,18 +122,45 @@ public class AnswerClassManager extends HttpServlet {
 			String title = request.getParameter("title");
 			String description = request.getParameter("description");
 			String detectionType = request.getParameter("detectionType");
-			ProgrammingLanguage programmingLanguage = ProgrammingLanguage.fromParam(request.getParameter("programmingLanguage"));
+			String functionTestCode = request.getParameter("functionTestCode");
+			String functionTestExpectedOutput = request.getParameter("functionTestExpectedOutput");
+			int answerClassId = Util.parseInteger(request.getParameter("answerclassid"), 0);
+			boolean creating = answerClassId <= 0;
+			List<AnswerClass> existingAnswerClasses = answerClassDAO.getAnswerClassesForTask(task);
+			// Same rule as the form: language is choosable only while the task has at most one AC.
+			boolean languageLocked = existingAnswerClasses.size() >= 2 || (creating && !existingAnswerClasses.isEmpty());
+			ProgrammingLanguage programmingLanguage = languageLocked ? answerClassDAO.getProgrammingLanguageForTask(task) : ProgrammingLanguage.fromParam(request.getParameter("programmingLanguage"));
 			int timesRunnableByStudents = Util.parseInteger(request.getParameter("timesRunnableByStudents"), 0);
-			boolean giveDetailsToStudents = request.getParameter("giveDetailsToStudents") != null;
-			if (programmingLanguage == ProgrammingLanguage.JAVA && !JavaDetectionTypes.isKnown(detectionType)) {
-				request.setAttribute("title", "Ungültige Erkennungsart");
-				getServletContext().getNamedDispatcher(MessageView.class.getSimpleName()).forward(request, response);
+			// Details stay in DB for tutors/debugging but are never shown to students (no advisor toggle).
+			boolean giveDetailsToStudents = false;
+			// MANUAL is a language-neutral pipeline concept (see AnswerClassToEvaluate / AnswerClassPipeline):
+			// it always resolves to PENDING for the tutor to grade, without ever consulting a checker
+			// registry or LanguageProvider artifacts - so it is valid regardless of programmingLanguage.
+			boolean isManual = AnswerClassToEvaluate.MANUAL_DETECTION_TYPE.equals(detectionType);
+			if (!isManual && programmingLanguage == ProgrammingLanguage.JAVA && !JavaDetectionTypes.isKnown(detectionType)) {
+				forwardFormValidationError(request, response, task, "Ungültige Erkennungsart");
+				return;
+			}
+
+			// only meaningful for detectionType WHILE_LOOP; whileLoopMax blank means "unbounded"
+			int whileLoopMin = Util.parseInteger(request.getParameter("whileLoopMin"), 1);
+			String whileLoopMaxParam = request.getParameter("whileLoopMax");
+			Integer whileLoopMax = (whileLoopMaxParam == null || whileLoopMaxParam.isBlank()) ? null : Util.parseInteger(whileLoopMaxParam, -1);
+			if (whileLoopMin < 0 || (whileLoopMax != null && (whileLoopMax < 0 || whileLoopMax < whileLoopMin))) {
+				forwardFormValidationError(request, response, task, "Ungültiger Bereich für die Anzahl while-Schleifen");
+				return;
+			}
+			// only meaningful for detectionType FOR_LOOP; forLoopMax blank means "unbounded"
+			int forLoopMin = Util.parseInteger(request.getParameter("forLoopMin"), 1);
+			String forLoopMaxParam = request.getParameter("forLoopMax");
+			Integer forLoopMax = (forLoopMaxParam == null || forLoopMaxParam.isBlank()) ? null : Util.parseInteger(forLoopMaxParam, -1);
+			if (forLoopMin < 0 || (forLoopMax != null && (forLoopMax < 0 || forLoopMax < forLoopMin))) {
+				forwardFormValidationError(request, response, task, "Ungültiger Bereich für die Anzahl for-Schleifen");
 				return;
 			}
 
 			session.beginTransaction();
 			AnswerClass answerClass;
-			int answerClassId = Util.parseInteger(request.getParameter("answerclassid"), 0);
 			if (answerClassId > 0) {
 				answerClass = answerClassDAO.getAnswerClassLocked(answerClassId);
 				if (answerClass == null || answerClass.getTask().getTaskid() != task.getTaskid()) {
@@ -155,6 +177,13 @@ public class AnswerClassManager extends HttpServlet {
 			} else {
 				answerClass = answerClassDAO.createAnswerClass(task, title, description, detectionType, timesRunnableByStudents, giveDetailsToStudents);
 			}
+			// only meaningful for the matching detectionType, but stored regardless (like description)
+			answerClass.setFunctionTestCode(functionTestCode);
+			answerClass.setFunctionTestExpectedOutput(functionTestExpectedOutput);
+			answerClass.setWhileLoopMin(whileLoopMin);
+			answerClass.setWhileLoopMax(whileLoopMax);
+			answerClass.setForLoopMin(forLoopMin);
+			answerClass.setForLoopMax(forLoopMax);
 
 			Set<AnswerClass> prerequisites = new HashSet<>();
 			String[] prerequisiteIds = request.getParameterValues("prerequisite");
@@ -196,31 +225,21 @@ public class AnswerClassManager extends HttpServlet {
 			}
 			session.getTransaction().commit();
 			response.sendRedirect(Util.generateRedirectURL(TaskManager.class.getSimpleName() + "?action=editTask&lecture=" + task.getTaskGroup().getLecture().getId() + "&taskid=" + task.getTaskid(), response));
-		} else if ("executeAnswerClassBatch".equals(request.getParameter("action"))) {
-			if (!task.getDeadline().isBefore(ZonedDateTime.now())) {
-				request.setAttribute("title", "Automatische Auswertung erst nach der Deadline möglich");
-				request.setAttribute("message", "<div class=mid><a href=\"" + Util.generateHTMLLink(TaskManager.class.getSimpleName() + "?action=editTask&lecture=" + task.getTaskGroup().getLecture().getId() + "&taskid=" + task.getTaskid(), response) + "\">zurück zur Aufgabe</a></div>");
-				getServletContext().getNamedDispatcher(MessageView.class.getSimpleName()).forward(request, response);
-				return;
-			}
-			session.beginTransaction();
-			for (AnswerClass answerClass : answerClassDAO.getAnswerClassesForTask(task)) {
-				session.lock(answerClass, LockMode.PESSIMISTIC_WRITE);
-				answerClass.setNeedsToRun(false);
-			}
-			session.getTransaction().commit();
-			try {
-				AnswerClassBatchRunner.runForTask(session, Configuration.getInstance().getDataPath(), task);
-			} catch (Exception e) {
-				LOG.error("Failed to execute answer class batch for task {}", task.getTaskid(), e);
-				request.setAttribute("title", "Beim automatischen Auswerten der Antwortklassen ist ein Fehler aufgetreten.");
-				getServletContext().getNamedDispatcher(MessageView.class.getSimpleName()).forward(request, response);
-				return;
-			}
-			response.sendRedirect(Util.generateRedirectURL(TaskManager.class.getSimpleName() + "?action=editTask&lecture=" + task.getTaskGroup().getLecture().getId() + "&taskid=" + task.getTaskid(), response));
 		} else {
 			request.setAttribute("title", "Ungültiger Aufruf");
 			getServletContext().getNamedDispatcher(MessageView.class.getSimpleName()).forward(request, response);
 		}
+	}
+
+	/**
+	 * Validation failed while saving; keep the advisor on the form (browser restores the
+	 * entered values) or let them leave back to the task editor. The default MessageView
+	 * link would otherwise send them to the lecture overview.
+	 */
+	private void forwardFormValidationError(HttpServletRequest request, HttpServletResponse response, Task task, String title) throws ServletException, IOException {
+		String cancel = Util.generateHTMLLink(TaskManager.class.getSimpleName() + "?action=editTask&taskid=" + task.getTaskid() + "&lecture=" + task.getTaskGroup().getLecture().getId(), response);
+		request.setAttribute("title", title);
+		request.setAttribute("message", "<div class=mid><a href=\"javascript:window.history.back();\">zurück zur Antwortklasse</a> - <a href=\"" + cancel + "\">Abbrechen</a></div>");
+		getServletContext().getNamedDispatcher(MessageView.class.getSimpleName()).forward(request, response);
 	}
 }

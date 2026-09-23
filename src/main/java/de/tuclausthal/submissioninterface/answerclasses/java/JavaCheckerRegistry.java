@@ -30,6 +30,8 @@ public final class JavaCheckerRegistry {
 		CheckerRegistry registry = new CheckerRegistry();
 		registry.register(JavaDetectionTypes.COMPILE_OK, new CompileOkChecker());
 		registry.register(JavaDetectionTypes.WHILE_LOOP, new WhileLoopChecker());
+		registry.register(JavaDetectionTypes.FOR_LOOP, new ForLoopChecker());
+		registry.register(JavaDetectionTypes.FUNCTION_TEST, new FunctionTestChecker());
 		return registry;
 	}
 }

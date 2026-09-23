@@ -35,22 +35,9 @@ import de.tuclausthal.submissioninterface.util.TaskPath;
 import de.tuclausthal.submissioninterface.util.Util;
 
 /**
- * Runner/Service that connects the language-neutral {@link AnswerClassPipeline} to the real
- * world: it loads the answer classes and submission path from the DB/disk, picks a
- * {@link LanguageProvider} + {@link CheckerRegistry}, and stores results via a
- * {@link DaoResultSink}. This is the "Runner/Service" from the antwortklassen
- * persistence-binding step; see {@code docs/antwortklassen-pipeline.puml} for the target flow.
- *
- * <p><b>Transaction handling:</b> like {@code PerformStudentTest}/{@code TestCountDAO}, this
- * class does not open/commit its own transaction. The caller (later: a web controller or a
- * batch job) is expected to {@code session.beginTransaction()} before and
- * {@code commit()}/{@code rollback()} after calling {@link #run}. This keeps run-limit checks
- * (which belong in the web controller, not here) and result persistence in one atomic unit,
- * and makes this class trivially testable with a rollback.</p>
- *
- * <p><b>Language selection:</b> taken from the task's answer classes ({@link ProgrammingLanguage},
- * kept in sync by the advisor form). Currently only {@link ProgrammingLanguage#JAVA} has a
- * provider; further languages plug in here.</p>
+ * Loads the answer classes of a submission, runs the pipeline and stores the results.
+ * preview() does not write anything. The caller owns the Hibernate transaction.
+ * Only Java is supported so far.
  */
 public class AnswerClassRunner {
 	private final Session session;
@@ -69,6 +56,26 @@ public class AnswerClassRunner {
 	 * @return the stored results, in the same order as the answer classes were evaluated
 	 */
 	public List<PipelineResult> run(PipelineTrigger trigger, Submission submission, Path dataPath) throws Exception {
+		return execute(trigger, submission, dataPath, true);
+	}
+
+	/**
+	 * Tutor check for one submission. Nothing is written to {@code answerclassresults}.
+	 */
+	public List<PipelineResult> preview(Submission submission, Path dataPath) throws Exception {
+		return preview(PipelineTrigger.TUTOR, submission, dataPath);
+	}
+
+	/**
+	 * Pipeline run that is shown to the caller and not stored. Student runs use
+	 * {@link PipelineTrigger#STUDENT}; tutor checks use {@link PipelineTrigger#TUTOR}.
+	 * Batch results and tutor grades stay the only persisted outcomes.
+	 */
+	public List<PipelineResult> preview(PipelineTrigger trigger, Submission submission, Path dataPath) throws Exception {
+		return execute(trigger, submission, dataPath, false);
+	}
+
+	private List<PipelineResult> execute(PipelineTrigger trigger, Submission submission, Path dataPath, boolean persist) throws Exception {
 		Objects.requireNonNull(trigger, "trigger");
 		Objects.requireNonNull(submission, "submission");
 		Objects.requireNonNull(dataPath, "dataPath");
@@ -83,7 +90,9 @@ public class AnswerClassRunner {
 		ProgrammingLanguage language = DAOFactory.AnswerClassDAOIf(session).getProgrammingLanguageForTask(task);
 		LanguageProvider languageProvider = chooseLanguageProvider(language, task, dataPath, submissionPath);
 		CheckerRegistry checkerRegistry = chooseCheckerRegistry(language);
-		ResultSink resultSink = new DaoResultSink(session, submission, answerClasses);
+		ResultSink resultSink = persist ? new DaoResultSink(session, submission, answerClasses) : ignored -> {
+			// Preview is shown once and must not overwrite answerclassresults.
+		};
 
 		return new AnswerClassPipeline().run(trigger, hasSubmissionFiles, answerClassesToEvaluate, languageProvider, checkerRegistry, resultSink);
 	}
@@ -94,7 +103,7 @@ public class AnswerClassRunner {
 	private static LanguageProvider chooseLanguageProvider(ProgrammingLanguage language, Task task, Path dataPath, Path submissionPath) {
 		Path administrativePath = Util.constructPath(dataPath, task, TaskPath.ADVISORFILES);
 		return switch (language == null ? ProgrammingLanguage.JAVA : language) {
-			case JAVA -> new JavaLanguageProvider(submissionPath, administrativePath);
+			case JAVA -> new JavaLanguageProvider(submissionPath, administrativePath, dataPath);
 		};
 	}
 

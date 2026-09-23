@@ -31,6 +31,7 @@ import org.hibernate.LockMode;
 import org.hibernate.Session;
 import org.hibernate.Transaction;
 
+import de.tuclausthal.submissioninterface.answerclasses.TutorAnswerClassPreview;
 import de.tuclausthal.submissioninterface.persistence.dao.DAOFactory;
 import de.tuclausthal.submissioninterface.persistence.dao.ParticipationDAOIf;
 import de.tuclausthal.submissioninterface.persistence.dao.PointsDAOIf;
@@ -79,6 +80,13 @@ public class ShowSubmission extends HttpServlet {
 
 		request.setAttribute("submission", submission);
 		request.setAttribute("submittedFiles", Util.listFilesAsRelativeStringListSorted(Util.constructPath(Configuration.getInstance().getDataPath(), submission)));
+		String previewKey = TutorAnswerClassPreview.sessionKey(submission.getSubmissionid());
+		Object storedPreview = request.getSession().getAttribute(previewKey);
+		if (storedPreview instanceof TutorAnswerClassPreview.Snapshot snapshot && snapshot.matches(submission)) {
+			request.setAttribute("answerClassPreview", snapshot.getResults());
+		} else if (storedPreview != null) {
+			request.getSession().removeAttribute(previewKey);
+		}
 		getServletContext().getNamedDispatcher(ShowSubmissionView.class.getSimpleName()).forward(request, response);
 	}
 

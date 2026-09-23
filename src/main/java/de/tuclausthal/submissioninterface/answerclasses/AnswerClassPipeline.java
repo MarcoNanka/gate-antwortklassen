@@ -18,9 +18,12 @@
 
 package de.tuclausthal.submissioninterface.answerclasses;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Deque;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -53,11 +56,14 @@ public class AnswerClassPipeline {
 		EvaluationContext context = new EvaluationContext(trigger);
 		List<PipelineResult> results = new ArrayList<>();
 		Map<Integer, AnswerClassResultStatus> statusByAnswerClassId = new HashMap<>();
+		// Prerequisites are checked only against results already produced in this run, so a
+		// dependent created before its prerequisite (lower id) would otherwise be SKIPPED.
+		List<AnswerClassToEvaluate> evaluationOrder = orderByPrerequisites(answerClasses);
 
 		languageProvider.assembleWorkspace(context);
 		languageProvider.startExecutionEnv(context);
 		try {
-			for (AnswerClassToEvaluate answerClass : answerClasses) {
+			for (AnswerClassToEvaluate answerClass : evaluationOrder) {
 				if (!isVisibleForTrigger(trigger, answerClass)) {
 					continue;
 				}
@@ -95,7 +101,7 @@ public class AnswerClassPipeline {
 					continue;
 				}
 
-				CheckerOutcome outcome = checker.check(context);
+				CheckerOutcome outcome = checker.check(context, answerClass);
 				store(results, statusByAnswerClassId, resultSink, answerClass.getId(), outcome.getStatus(), outcome.getDetails(), sourceForTrigger(trigger));
 			}
 		} finally {
@@ -110,6 +116,55 @@ public class AnswerClassPipeline {
 			return answerClass.getTimesRunnableByStudents() > 0;
 		}
 		return true;
+	}
+
+	/**
+	 * Kahn topological order: every prerequisite that is part of this run is evaluated before
+	 * the answer class that depends on it. Relative order is kept when there is no dependency.
+	 * A cycle (or a prerequisite outside this list) is left in the original order; those answer
+	 * classes then SKIP as usual because the prerequisite is never MATCHED first.
+	 */
+	static List<AnswerClassToEvaluate> orderByPrerequisites(List<AnswerClassToEvaluate> answerClasses) {
+		Map<Integer, AnswerClassToEvaluate> byId = new LinkedHashMap<>();
+		for (AnswerClassToEvaluate answerClass : answerClasses) {
+			byId.put(answerClass.getId(), answerClass);
+		}
+		Map<Integer, Integer> indegree = new HashMap<>();
+		Map<Integer, List<Integer>> dependents = new HashMap<>();
+		for (AnswerClassToEvaluate answerClass : answerClasses) {
+			indegree.putIfAbsent(answerClass.getId(), 0);
+			for (Integer prerequisiteId : answerClass.getPrerequisiteIds()) {
+				if (!byId.containsKey(prerequisiteId) || prerequisiteId == answerClass.getId()) {
+					continue;
+				}
+				dependents.computeIfAbsent(prerequisiteId, id -> new ArrayList<>()).add(answerClass.getId());
+				indegree.merge(answerClass.getId(), 1, Integer::sum);
+			}
+		}
+		Deque<Integer> ready = new ArrayDeque<>();
+		for (AnswerClassToEvaluate answerClass : answerClasses) {
+			if (indegree.get(answerClass.getId()) == 0) {
+				ready.add(answerClass.getId());
+			}
+		}
+		List<AnswerClassToEvaluate> ordered = new ArrayList<>(answerClasses.size());
+		while (!ready.isEmpty()) {
+			AnswerClassToEvaluate next = byId.get(ready.removeFirst());
+			ordered.add(next);
+			for (Integer dependentId : dependents.getOrDefault(next.getId(), List.of())) {
+				if (indegree.merge(dependentId, -1, Integer::sum) == 0) {
+					ready.addLast(dependentId);
+				}
+			}
+		}
+		if (ordered.size() < byId.size()) {
+			for (AnswerClassToEvaluate answerClass : answerClasses) {
+				if (ordered.stream().noneMatch(placed -> placed.getId() == answerClass.getId())) {
+					ordered.add(answerClass);
+				}
+			}
+		}
+		return ordered;
 	}
 
 	static boolean prerequisitesSatisfied(AnswerClassToEvaluate answerClass, Map<Integer, AnswerClassResultStatus> statusByAnswerClassId) {

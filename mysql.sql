@@ -484,8 +484,14 @@ CREATE TABLE IF NOT EXISTS `answerclasses` (
   `detectionType` varchar(50) NOT NULL DEFAULT '',
   `programmingLanguage` varchar(32) NOT NULL DEFAULT 'JAVA',
   `timesRunnableByStudents` int(11) NOT NULL DEFAULT 3,
-  `giveDetailsToStudents` tinyint(1) NOT NULL DEFAULT 1,
+  `giveDetailsToStudents` tinyint(1) NOT NULL DEFAULT 0,
   `needsToRun` tinyint(1) NOT NULL DEFAULT 1,
+  `functionTestCode` text DEFAULT NULL,
+  `functionTestExpectedOutput` text DEFAULT NULL,
+  `whileLoopMin` int(11) NOT NULL DEFAULT 1,
+  `whileLoopMax` int(11) DEFAULT NULL,
+  `forLoopMin` int(11) NOT NULL DEFAULT 1,
+  `forLoopMax` int(11) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `FK_answerclasses_task` (`taskid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;

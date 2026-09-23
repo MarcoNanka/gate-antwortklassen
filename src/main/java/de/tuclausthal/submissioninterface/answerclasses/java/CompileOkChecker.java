@@ -21,6 +21,7 @@ package de.tuclausthal.submissioninterface.answerclasses.java;
 import java.util.EnumSet;
 import java.util.Set;
 
+import de.tuclausthal.submissioninterface.answerclasses.AnswerClassToEvaluate;
 import de.tuclausthal.submissioninterface.answerclasses.ArtifactType;
 import de.tuclausthal.submissioninterface.answerclasses.Checker;
 import de.tuclausthal.submissioninterface.answerclasses.CheckerOutcome;
@@ -36,7 +37,7 @@ public class CompileOkChecker implements Checker {
 	}
 
 	@Override
-	public CheckerOutcome check(EvaluationContext context) {
+	public CheckerOutcome check(EvaluationContext context, AnswerClassToEvaluate answerClass) {
 		BuildArtifact build = context.<BuildArtifact>getArtifact(ArtifactType.BUILD).orElseThrow(() -> new IllegalStateException("BUILD artifact missing"));
 		if (build.isSuccessful()) {
 			return CheckerOutcome.matched("compiled successfully");

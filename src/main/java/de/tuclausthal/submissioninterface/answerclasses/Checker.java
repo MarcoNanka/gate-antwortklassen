@@ -31,6 +31,10 @@ public interface Checker {
 
 	/**
 	 * Run the check; artifacts are already available in the context.
+	 *
+	 * @param answerClass pipeline view of the answer class being checked - most checkers ignore
+	 *        this, but e.g. {@code FunctionTestChecker} needs the advisor-configured test code
+	 *        and expected output that live on it
 	 */
-	CheckerOutcome check(EvaluationContext context);
+	CheckerOutcome check(EvaluationContext context, AnswerClassToEvaluate answerClass);
 }

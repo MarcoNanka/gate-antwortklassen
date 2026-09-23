@@ -98,8 +98,8 @@ INSERT INTO `mcoptions` (`id`, `correct`, `title`, `taskid`) VALUES
 --
 
 INSERT INTO `answerclasses` (`id`, `taskid`, `title`, `description`, `detectionType`, `programmingLanguage`, `timesRunnableByStudents`, `giveDetailsToStudents`) VALUES
-(1, 3, 'Code compiles', 'Submission compiles with javac', 'COMPILE_OK', 'JAVA', 2, b'1'),
-(2, 3, 'While loop', 'Submission contains a while loop', 'WHILE_LOOP', 'JAVA', 2, b'1');
+(1, 3, 'Code compiles', 'Submission compiles with javac', 'COMPILE_OK', 'JAVA', 2, b'0'),
+(2, 3, 'While loop', 'Submission contains a while loop', 'WHILE_LOOP', 'JAVA', 2, b'0');
 
 --
 -- Daten für Tabelle `answerclass_prerequisites`

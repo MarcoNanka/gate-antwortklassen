@@ -23,13 +23,18 @@ import java.util.Set;
 
 import com.github.javaparser.ast.stmt.WhileStmt;
 
+import de.tuclausthal.submissioninterface.answerclasses.AnswerClassToEvaluate;
 import de.tuclausthal.submissioninterface.answerclasses.ArtifactType;
 import de.tuclausthal.submissioninterface.answerclasses.Checker;
 import de.tuclausthal.submissioninterface.answerclasses.CheckerOutcome;
 import de.tuclausthal.submissioninterface.answerclasses.EvaluationContext;
 
 /**
- * MATCHED if any parsed compilation unit contains a {@code while} statement.
+ * MATCHED if the number of {@code while} statements across all parsed compilation units lies
+ * within the advisor-configured {@code [whileLoopMin, whileLoopMax]} range (see
+ * {@link AnswerClassToEvaluate#getWhileLoopMin()}/{@link AnswerClassToEvaluate#getWhileLoopMax()}).
+ * Defaults to "at least one" ({@code min=1}, unbounded max) when the advisor didn't configure a
+ * range - the original presence-only behavior.
  */
 public class WhileLoopChecker implements Checker {
 	@Override
@@ -38,12 +43,16 @@ public class WhileLoopChecker implements Checker {
 	}
 
 	@Override
-	public CheckerOutcome check(EvaluationContext context) {
+	public CheckerOutcome check(EvaluationContext context, AnswerClassToEvaluate answerClass) {
 		AstArtifact ast = context.<AstArtifact>getArtifact(ArtifactType.AST).orElseThrow(() -> new IllegalStateException("AST artifact missing"));
-		boolean found = ast.getCompilationUnits().stream().anyMatch(unit -> !unit.findAll(WhileStmt.class).isEmpty());
-		if (found) {
-			return CheckerOutcome.matched("while loop present");
-		}
-		return CheckerOutcome.notMatched("no while loop found");
+		int count = ast.getCompilationUnits().stream().mapToInt(unit -> unit.findAll(WhileStmt.class).size()).sum();
+
+		int min = answerClass.getWhileLoopMin();
+		Integer max = answerClass.getWhileLoopMax();
+		String expectedRange = max == null ? (">= " + min) : (min == max ? ("genau " + min) : (min + " bis " + max));
+		String details = count + " while-Schleife(n) gefunden (erwartet: " + expectedRange + ")";
+
+		boolean ok = count >= min && (max == null || count <= max);
+		return ok ? CheckerOutcome.matched(details) : CheckerOutcome.notMatched(details);
 	}
 }

@@ -71,8 +71,12 @@ public class AnswerClass implements Serializable {
 	private ProgrammingLanguage programmingLanguage = ProgrammingLanguage.JAVA;
 	@Column(nullable = false)
 	private int timesRunnableByStudents = 3;
+	/**
+	 * Kept for schema compatibility with classic tests; always {@code false} for answer classes.
+	 * Result details are still stored and shown to tutors, never to students.
+	 */
 	@Column(nullable = false)
-	private boolean giveDetailsToStudents = true;
+	private boolean giveDetailsToStudents = false;
 	/**
 	 * Self-referencing many-to-many: this answer class is only evaluated once all of its
 	 * prerequisites are MATCHED (see {@code AnswerClassPipeline} / {@code AnswerClassMapper}).
@@ -91,6 +95,43 @@ public class AnswerClass implements Serializable {
 	 */
 	@Column(nullable = false)
 	private boolean needsToRun = true;
+	/**
+	 * Java statements (advisor-authored) run inside a generated {@code Tester.main()} for
+	 * {@code detectionType == FUNCTION_TEST}; {@code null}/unused for every other detectionType.
+	 * See {@code de.tuclausthal.submissioninterface.answerclasses.java.RunArtifact}.
+	 */
+	@Column(columnDefinition = "TEXT")
+	private String functionTestCode;
+	/**
+	 * Expected stdout for {@code detectionType == FUNCTION_TEST} (compared trimmed); {@code null}
+	 * /unused for every other detectionType.
+	 */
+	@Column(columnDefinition = "TEXT")
+	private String functionTestExpectedOutput;
+	/**
+	 * Lower bound (inclusive) on the number of {@code while} statements for
+	 * {@code detectionType == WHILE_LOOP}; unused for every other detectionType. Default 1
+	 * reproduces the original "contains at least one while loop" behavior.
+	 */
+	@Column(nullable = false)
+	private int whileLoopMin = 1;
+	/**
+	 * Upper bound (inclusive) on the number of {@code while} statements for
+	 * {@code detectionType == WHILE_LOOP}; {@code null} means unbounded.
+	 */
+	private Integer whileLoopMax;
+	/**
+	 * Lower bound (inclusive) on the number of classic {@code for} statements for
+	 * {@code detectionType == FOR_LOOP}; unused for every other detectionType. Default 1
+	 * reproduces the "contains at least one for loop" behavior.
+	 */
+	@Column(nullable = false)
+	private int forLoopMin = 1;
+	/**
+	 * Upper bound (inclusive) on the number of classic {@code for} statements for
+	 * {@code detectionType == FOR_LOOP}; {@code null} means unbounded.
+	 */
+	private Integer forLoopMax;
 
 	protected AnswerClass() {}
 
@@ -193,6 +234,54 @@ public class AnswerClass implements Serializable {
 
 	public void setNeedsToRun(boolean needsToRun) {
 		this.needsToRun = needsToRun;
+	}
+
+	public String getFunctionTestCode() {
+		return functionTestCode;
+	}
+
+	public void setFunctionTestCode(String functionTestCode) {
+		this.functionTestCode = functionTestCode;
+	}
+
+	public String getFunctionTestExpectedOutput() {
+		return functionTestExpectedOutput;
+	}
+
+	public void setFunctionTestExpectedOutput(String functionTestExpectedOutput) {
+		this.functionTestExpectedOutput = functionTestExpectedOutput;
+	}
+
+	public int getWhileLoopMin() {
+		return whileLoopMin;
+	}
+
+	public void setWhileLoopMin(int whileLoopMin) {
+		this.whileLoopMin = Math.max(0, whileLoopMin);
+	}
+
+	public Integer getWhileLoopMax() {
+		return whileLoopMax;
+	}
+
+	public void setWhileLoopMax(Integer whileLoopMax) {
+		this.whileLoopMax = whileLoopMax;
+	}
+
+	public int getForLoopMin() {
+		return forLoopMin;
+	}
+
+	public void setForLoopMin(int forLoopMin) {
+		this.forLoopMin = Math.max(0, forLoopMin);
+	}
+
+	public Integer getForLoopMax() {
+		return forLoopMax;
+	}
+
+	public void setForLoopMax(Integer forLoopMax) {
+		this.forLoopMax = forLoopMax;
 	}
 
 	@Override

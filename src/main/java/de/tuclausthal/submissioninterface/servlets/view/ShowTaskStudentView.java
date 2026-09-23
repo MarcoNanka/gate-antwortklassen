@@ -38,6 +38,7 @@ import jakarta.servlet.http.HttpServletResponse;
 
 import org.hibernate.Session;
 
+import de.tuclausthal.submissioninterface.answerclasses.StudentAnswerClassVisibility;
 import de.tuclausthal.submissioninterface.dynamictasks.DynamicTaskStrategieIf;
 import de.tuclausthal.submissioninterface.persistence.dao.DAOFactory;
 import de.tuclausthal.submissioninterface.persistence.dao.MCOptionDAOIf;
@@ -364,37 +365,31 @@ public class ShowTaskStudentView extends HttpServlet {
 			}
 
 			List<AnswerClass> answerClasses = DAOFactory.AnswerClassDAOIf(session).getAnswerClassesForTask(task);
-			boolean anyAnswerClassVisible = answerClasses.stream().anyMatch(answerClass -> answerClass.getTimesRunnableByStudents() > 0);
-			if (!submittedFiles.isEmpty() && anyAnswerClassVisible && task.getDeadline().isAfter(ZonedDateTime.now()) && !(task.isAllowPrematureSubmissionClosing() && submission.isClosed())) {
-				List<AnswerClassResult> answerClassResults = DAOFactory.AnswerClassResultDAOIf(session).getResultsForSubmission(submission);
-				Map<Integer, AnswerClassResult> answerClassResultByAnswerClassId = answerClassResults.stream().collect(Collectors.toMap(result -> result.getAnswerClass().getId(), Function.identity()));
-				int answerClassesRunnable = DAOFactory.AnswerClassRunCountDAOIf(session).canStillRunXTimes(task, participation.getUser());
+			List<AnswerClass> visibleAnswerClasses = answerClasses.stream().filter(answerClass -> answerClass.getTimesRunnableByStudents() > 0).collect(Collectors.toList());
+			if (!submittedFiles.isEmpty() && !visibleAnswerClasses.isEmpty()) {
+				boolean canRunAnswerClasses = task.getDeadline().isAfter(ZonedDateTime.now()) && !(task.isAllowPrematureSubmissionClosing() && submission.isClosed());
 				out.println("<p><h2>Antwortklassen:</h2>");
-				out.println("<table>");
-				for (AnswerClass answerClass : answerClasses) {
-					if (answerClass.getTimesRunnableByStudents() == 0) {
-						continue;
+				if (canRunAnswerClasses) {
+					int answerClassesRunnable = DAOFactory.AnswerClassRunCountDAOIf(session).canStillRunXTimes(task, participation.getUser());
+					if (answerClassesRunnable > 0) {
+						out.println("<form method=post action=\"" + Util.generateHTMLLink(PerformStudentAnswerClasses.class.getSimpleName() + "?taskid=" + task.getTaskid(), response) + "\"><input type=submit value=\"Antwortklassen ausführen\"></form>");
+						out.println(" (noch " + answerClassesRunnable + "x ausführbar)");
+					} else {
+						out.println("Limit erreicht");
 					}
-					out.println("<tr>");
-					out.println("<th>" + Util.escapeHTML(answerClass.getTitle()) + "</th>");
-					out.println("<td>");
-					out.println(Util.textToHTML(answerClass.getDescription() == null ? "" : answerClass.getDescription()));
-					out.println("</td>");
-					out.println("<td>");
-					AnswerClassResult answerClassResult = answerClassResultByAnswerClassId.get(answerClass.getId());
-					out.println("<b>" + ShowAnswerClassResult.statusLabel(answerClassResult == null ? null : answerClassResult.getStatus()) + "</b>");
-					if (answerClassResult != null && answerClass.isGiveDetailsToStudents() && answerClassResult.getDetails() != null && !answerClassResult.getDetails().isEmpty()) {
-						out.println("<br>" + Util.textToHTML(answerClassResult.getDetails()));
-					}
-					out.println("</td>");
-					out.println("</tr>");
-				}
-				out.println("</table>");
-				if (answerClassesRunnable > 0) {
-					out.println("<form method=post action=\"" + Util.generateHTMLLink(PerformStudentAnswerClasses.class.getSimpleName() + "?taskid=" + task.getTaskid(), response) + "\"><input type=submit value=\"Antwortklassen ausführen\"></form>");
-					out.println(" (noch " + answerClassesRunnable + "x ausführbar)");
 				} else {
-					out.println("Limit erreicht");
+					List<AnswerClassResult> answerClassResults = DAOFactory.AnswerClassResultDAOIf(session).getResultsForSubmission(submission);
+					Map<Integer, AnswerClassResult> answerClassResultByAnswerClassId = answerClassResults.stream().collect(Collectors.toMap(result -> result.getAnswerClass().getId(), Function.identity()));
+					out.println("<table>");
+					out.println("<tr><th>Titel</th><th>Beschreibung</th><th>Ergebnis</th></tr>");
+					for (AnswerClass answerClass : visibleAnswerClasses) {
+						out.println("<tr>");
+						out.println("<th>" + Util.escapeHTML(answerClass.getTitle()) + "</th>");
+						out.println("<td>" + Util.textToHTML(answerClass.getDescription() == null ? "" : answerClass.getDescription()) + "</td>");
+						out.println("<td><b>" + ShowAnswerClassResult.statusLabel(StudentAnswerClassVisibility.officialStatus(answerClassResultByAnswerClassId.get(answerClass.getId()))) + "</b></td>");
+						out.println("</tr>");
+					}
+					out.println("</table>");
 				}
 			}
 		} else {

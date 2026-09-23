@@ -26,17 +26,8 @@ import java.util.stream.Collectors;
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClass;
 
 /**
- * Maps the JPA {@link AnswerClass} entity onto the pipeline-internal, persistence-free
- * {@link AnswerClassToEvaluate} DTO (see {@code docs/antwortklassen-pipeline.puml}).
- *
- * <p>Order: the pipeline evaluates answer classes in list order, so this mapper preserves
- * exactly the order of the given input list. Callers are expected to pass the list as
- * returned by {@code AnswerClassDAOIf#getAnswerClassesForTask}, which is already sorted by
- * ascending id.</p>
- *
- * <p>Prerequisites: sourced from {@link AnswerClass#getPrerequisites()} (self-referencing
- * many-to-many, table {@code answerclass_prerequisites}). Order within the prerequisite list
- * is irrelevant - the pipeline only checks whether every referenced id was MATCHED.</p>
+ * Maps an AnswerClass entity to AnswerClassToEvaluate.
+ * Keeps the input order. Prerequisites come from the entity.
  */
 public final class AnswerClassMapper {
 	private AnswerClassMapper() {}
@@ -57,6 +48,12 @@ public final class AnswerClassMapper {
 	public static AnswerClassToEvaluate map(AnswerClass answerClass) {
 		Objects.requireNonNull(answerClass, "answerClass");
 		List<Integer> prerequisiteIds = answerClass.getPrerequisites().stream().map(AnswerClass::getId).collect(Collectors.toList());
-		return new AnswerClassToEvaluate(answerClass.getId(), answerClass.getDetectionType(), answerClass.getTimesRunnableByStudents(), prerequisiteIds);
+		return AnswerClassToEvaluate.builder(answerClass.getId(), answerClass.getDetectionType(), answerClass.getTimesRunnableByStudents())
+				.prerequisiteIds(prerequisiteIds)
+				.functionTestCode(answerClass.getFunctionTestCode())
+				.functionTestExpectedOutput(answerClass.getFunctionTestExpectedOutput())
+				.whileLoopRange(answerClass.getWhileLoopMin(), answerClass.getWhileLoopMax())
+				.forLoopRange(answerClass.getForLoopMin(), answerClass.getForLoopMax())
+				.build();
 	}
 }

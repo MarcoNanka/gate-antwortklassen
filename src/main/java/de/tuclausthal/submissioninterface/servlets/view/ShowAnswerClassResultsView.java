@@ -31,8 +31,10 @@ import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+import de.tuclausthal.submissioninterface.answerclasses.StudentAnswerClassVisibility;
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClass;
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResult;
+import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResultStatus;
 import de.tuclausthal.submissioninterface.persistence.datamodel.Submission;
 import de.tuclausthal.submissioninterface.persistence.datamodel.Task;
 import de.tuclausthal.submissioninterface.servlets.GATEView;
@@ -44,11 +46,9 @@ import de.tuclausthal.submissioninterface.template.TemplateFactory;
 import de.tuclausthal.submissioninterface.util.Util;
 
 /**
- * Shows a student their own answer-class results for one task (after
- * {@code PerformStudentAnswerClasses} triggered a run, or just to see the current/stale state).
- * {@code giveDetailsToStudents} governs whether the free-text {@code details} are shown -
- * status is always visible, matching how classic {@code Test#giveDetailsToStudents} is handled
- * (see {@code PerformStudentTestResultView}).
+ * Result page after a student asks for an answer-class run. That run is shown once and is not
+ * stored. After the deadline this page shows batch results and tutor grades only.
+ * Free-text {@code details} stay tutor-only.
  */
 @GATEView
 public class ShowAnswerClassResultsView extends HttpServlet {
@@ -67,6 +67,9 @@ public class ShowAnswerClassResultsView extends HttpServlet {
 		int runnable = (Integer) request.getAttribute("runnable");
 
 		Map<Integer, AnswerClassResult> resultByAnswerClassId = results.stream().collect(Collectors.toMap(result -> result.getAnswerClass().getId(), Function.identity()));
+		boolean canRun = task.getDeadline().isAfter(ZonedDateTime.now()) && !(task.isAllowPrematureSubmissionClosing() && submission.isClosed());
+		@SuppressWarnings("unchecked")
+		Map<Integer, AnswerClassResultStatus> preview = canRun ? (Map<Integer, AnswerClassResultStatus>) request.getAttribute("answerClassPreview") : null;
 
 		template.printTemplateHeader(task);
 		PrintWriter out = response.getWriter();
@@ -76,28 +79,28 @@ public class ShowAnswerClassResultsView extends HttpServlet {
 		if (visibleAnswerClasses.isEmpty()) {
 			out.println("<p>Für diese Aufgabe sind aktuell keine Antwortklassen für Studierende verfügbar.</p>");
 		} else {
-			out.println("<table>");
-			out.println("<tr><th>Titel</th><th>Beschreibung</th><th>Ergebnis</th></tr>");
-			for (AnswerClass answerClass : visibleAnswerClasses) {
-				AnswerClassResult result = resultByAnswerClassId.get(answerClass.getId());
-				out.println("<tr>");
-				out.println("<th>" + Util.escapeHTML(answerClass.getTitle()) + "</th>");
-				out.println("<td>" + Util.textToHTML(answerClass.getDescription() == null ? "" : answerClass.getDescription()) + "</td>");
-				out.println("<td>");
-				out.println("<b>" + ShowAnswerClassResult.statusLabel(result == null ? null : result.getStatus()) + "</b>");
-				if (result != null && answerClass.isGiveDetailsToStudents() && result.getDetails() != null && !result.getDetails().isEmpty()) {
-					out.println("<br>" + Util.textToHTML(result.getDetails()));
+			if (preview != null || !canRun) {
+				out.println("<table>");
+				out.println("<tr><th>Titel</th><th>Beschreibung</th><th>Ergebnis</th></tr>");
+				for (AnswerClass answerClass : visibleAnswerClasses) {
+					AnswerClassResultStatus status = preview != null ? preview.get(answerClass.getId()) : StudentAnswerClassVisibility.officialStatus(resultByAnswerClassId.get(answerClass.getId()));
+					out.println("<tr>");
+					out.println("<th>" + Util.escapeHTML(answerClass.getTitle()) + "</th>");
+					out.println("<td>" + Util.textToHTML(answerClass.getDescription() == null ? "" : answerClass.getDescription()) + "</td>");
+					out.println("<td>");
+					out.println("<b>" + ShowAnswerClassResult.statusLabel(status) + "</b>");
+					out.println("</td>");
+					out.println("</tr>");
 				}
-				out.println("</td>");
-				out.println("</tr>");
+				out.println("</table>");
 			}
-			out.println("</table>");
 
-			boolean canRun = task.getDeadline().isAfter(ZonedDateTime.now()) && !(task.isAllowPrematureSubmissionClosing() && submission.isClosed());
-			if (canRun && runnable > 0) {
-				out.println("<form method=post action=\"" + Util.generateHTMLLink(PerformStudentAnswerClasses.class.getSimpleName() + "?taskid=" + task.getTaskid(), response) + "\"><input type=submit value=\"Antwortklassen (erneut) ausführen\"></form>");
+			// A fresh preview is for this submission as it stands. Running again from here would
+			// spend another attempt on the same files, so the next run starts from the task page.
+			if (preview == null && canRun && runnable > 0) {
+				out.println("<form method=post action=\"" + Util.generateHTMLLink(PerformStudentAnswerClasses.class.getSimpleName() + "?taskid=" + task.getTaskid(), response) + "\"><input type=submit value=\"Antwortklassen ausführen\"></form>");
 				out.println("<p>noch " + runnable + "x ausführbar</p>");
-			} else if (canRun) {
+			} else if (preview == null && canRun) {
 				out.println("<p>Limit erreicht</p>");
 			}
 		}

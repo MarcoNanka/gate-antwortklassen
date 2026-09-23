@@ -50,7 +50,7 @@ class AnswerClassDAOIfTest extends BasicTest {
 		assertEquals("Code compiles", answerClasses.get(0).getTitle());
 		assertEquals("COMPILE_OK", answerClasses.get(0).getDetectionType());
 		assertEquals(2, answerClasses.get(0).getTimesRunnableByStudents());
-		assertTrue(answerClasses.get(0).isGiveDetailsToStudents());
+		assertFalse(answerClasses.get(0).isGiveDetailsToStudents());
 		assertEquals(2, answerClasses.get(1).getId());
 		assertEquals("While loop", answerClasses.get(1).getTitle());
 		assertEquals("WHILE_LOOP", answerClasses.get(1).getDetectionType());
@@ -83,7 +83,7 @@ class AnswerClassDAOIfTest extends BasicTest {
 		Task task = DAOFactory.TaskDAOIf(session).getTask(3);
 		List<AnswerClass> before = DAOFactory.AnswerClassDAOIf(session).getAnswerClassesForTask(task);
 
-		AnswerClass created = DAOFactory.AnswerClassDAOIf(session).createAnswerClass(task, "DAO Test AC", "desc", "COMPILE_OK", 3, true);
+		AnswerClass created = DAOFactory.AnswerClassDAOIf(session).createAnswerClass(task, "DAO Test AC", "desc", "COMPILE_OK", 3, false);
 		assertTrue(created.getId() > 0);
 		assertFalse(before.contains(created));
 		assertEquals(before.size() + 1, DAOFactory.AnswerClassDAOIf(session).getAnswerClassesForTask(task).size());

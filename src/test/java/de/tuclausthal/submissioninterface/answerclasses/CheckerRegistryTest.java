@@ -37,7 +37,7 @@ class CheckerRegistryTest {
 			}
 
 			@Override
-			public CheckerOutcome check(EvaluationContext context) {
+			public CheckerOutcome check(EvaluationContext context, AnswerClassToEvaluate answerClass) {
 				return CheckerOutcome.matched("ok");
 			}
 		};

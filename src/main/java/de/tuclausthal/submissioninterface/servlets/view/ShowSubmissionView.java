@@ -38,6 +38,9 @@ import jakarta.servlet.http.HttpServletResponse;
 
 import org.hibernate.Session;
 
+import de.tuclausthal.submissioninterface.answerclasses.AnswerClassToEvaluate;
+import de.tuclausthal.submissioninterface.answerclasses.PipelineResult;
+import de.tuclausthal.submissioninterface.answerclasses.TutorAnswerClassPreview;
 import de.tuclausthal.submissioninterface.dynamictasks.DynamicTaskStrategieIf;
 import de.tuclausthal.submissioninterface.persistence.dao.DAOFactory;
 import de.tuclausthal.submissioninterface.persistence.dao.PointGivenDAOIf;
@@ -86,6 +89,11 @@ import de.tuclausthal.submissioninterface.util.Util;
 @GATEView
 public class ShowSubmissionView extends HttpServlet {
 	private static final long serialVersionUID = 1L;
+
+	@Override
+	public void doPost(HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException {
+		doGet(request, response);
+	}
 
 	@Override
 	public void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException {
@@ -335,32 +343,69 @@ public class ShowSubmissionView extends HttpServlet {
 		if (!answerClasses.isEmpty()) {
 			List<AnswerClassResult> answerClassResults = DAOFactory.AnswerClassResultDAOIf(session).getResultsForSubmission(submission);
 			Map<Integer, AnswerClassResult> answerClassResultByAnswerClassId = answerClassResults.stream().collect(Collectors.toMap(result -> result.getAnswerClass().getId(), Function.identity()));
+			@SuppressWarnings("unchecked")
+			Map<Integer, PipelineResult> answerClassPreview = (Map<Integer, PipelineResult>) request.getAttribute("answerClassPreview");
 			out.println("<h2>Antwortklassen: <a href=\"#\" onclick=\"toggleVisibility('answerclasses'); return false;\">(+/-)</a></h2>");
-			out.println("<ul id=answerclasses>");
+			boolean probeColumn = TutorAnswerClassPreview.isAvailable(answerClasses, answerClassResultByAnswerClassId);
+			if (!probeColumn) {
+				answerClassPreview = null;
+			}
+			out.println("<div id=answerclasses>");
+			if (probeColumn) {
+				out.println("<p>Der Probelauf wird nicht gespeichert und nicht Studierenden angezeigt. Die Spalte Gespeichert füllt der Batchlauf nach der Deadline.</p>");
+			}
+			out.println("<table>");
+			out.println("<tr>");
+			out.println("<th>Antwortklasse</th>");
+			out.println("<th>Gespeichert</th>");
+			if (probeColumn) {
+				out.println("<th>Probelauf (nur für Tutor sichtbar)</th>");
+			}
+			out.println("</tr>");
+			boolean manualGradingOpen = task.getDeadline().isBefore(ZonedDateTime.now()) || (task.isAllowPrematureSubmissionClosing() && submission.isClosed());
 			for (AnswerClass answerClass : answerClasses) {
 				AnswerClassResult answerClassResult = answerClassResultByAnswerClassId.get(answerClass.getId());
-				out.println("<li>" + Util.escapeHTML(answerClass.getTitle()) + "<br>");
-				out.println("<b>Status:</b> " + ShowAnswerClassResult.statusLabel(answerClassResult == null ? null : answerClassResult.getStatus()) + "<br>");
-				if (answerClassResult != null && answerClassResult.getDetails() != null && !answerClassResult.getDetails().isEmpty()) {
-					out.println("<textarea cols=80 rows=6>" + Util.escapeHTML(answerClassResult.getDetails()) + "</textarea><br>");
+				boolean manual = AnswerClassToEvaluate.MANUAL_DETECTION_TYPE.equals(answerClass.getDetectionType());
+				out.println("<tr>");
+				out.println("<td>" + Util.escapeHTML(answerClass.getTitle()) + "</td>");
+				out.println("<td>");
+				out.println(ShowAnswerClassResult.statusLabel(answerClassResult == null ? null : answerClassResult.getStatus()));
+				boolean manualForm = manual && manualGradingOpen;
+				if (!manualForm && answerClassResult != null && answerClassResult.getDetails() != null && !answerClassResult.getDetails().isEmpty()) {
+					out.println("<pre>" + Util.escapeHTML(answerClassResult.getDetails()) + "</pre>");
 				}
-				out.println("<form class=mid method=post action=\"" + Util.generateHTMLLink(PerformTutorAnswerClasses.class.getSimpleName(), response) + "\">");
-				out.println("<input type=hidden name=sid value=" + submission.getSubmissionid() + ">");
-				out.println("<input type=hidden name=answerclassid value=" + answerClass.getId() + ">");
-				out.println("<select name=status size=1>");
-				for (AnswerClassResultStatus status : AnswerClassResultStatus.values()) {
-					out.println("<option value=" + status.name() + (answerClassResult != null && answerClassResult.getStatus() == status ? " selected" : "") + ">" + ShowAnswerClassResult.statusLabel(status) + "</option>");
+				if (manualForm) {
+					out.println("<form method=post action=\"" + Util.generateHTMLLink(PerformTutorAnswerClasses.class.getSimpleName(), response) + "\">");
+					out.println("<input type=hidden name=sid value=" + submission.getSubmissionid() + ">");
+					out.println("<input type=hidden name=answerclassid value=" + answerClass.getId() + ">");
+					out.println("<select name=status size=1>");
+					for (AnswerClassResultStatus status : AnswerClassResultStatus.values()) {
+						out.println("<option value=" + status.name() + (answerClassResult != null && answerClassResult.getStatus() == status ? " selected" : "") + ">" + ShowAnswerClassResult.statusLabel(status) + "</option>");
+					}
+					out.println("</select> <input type=text name=details placeholder=\"Anmerkung\" value=\"" + (answerClassResult == null ? "" : Util.escapeHTML(answerClassResult.getDetails())) + "\">");
+					out.println(" <input type=submit value=\"manuell setzen\">");
+					out.println("</form>");
+				} else if (manual) {
+					out.println("<br>Manuelle Bewertung nach Ablauf der Deadline oder nach endgültiger Abgabe.");
 				}
-				out.println("</select> <input type=text name=details placeholder=\"Anmerkung\" value=\"" + (answerClassResult == null ? "" : Util.escapeHTML(answerClassResult.getDetails())) + "\">");
-				out.println(" <input type=submit value=\"manuell setzen\">");
-				out.println("</form>");
-				out.println("</li>");
+				out.println("</td>");
+				if (probeColumn) {
+					out.println("<td>");
+					if (manual || answerClassPreview == null || !answerClassPreview.containsKey(answerClass.getId())) {
+						out.println("—");
+					} else {
+						out.println(ShowAnswerClassResult.statusLabel(answerClassPreview.get(answerClass.getId()).getStatus()));
+					}
+					out.println("</td>");
+				}
+				out.println("</tr>");
 			}
-			out.println("</ul>");
-			if (!submittedFiles.isEmpty() && task.getDeadline().isAfter(ZonedDateTime.now())) {
-				out.println("<form class=mid method=post action=\"" + Util.generateHTMLLink(PerformTutorAnswerClasses.class.getSimpleName(), response) + "\">");
+			out.println("</table>");
+			out.println("</div>");
+			if (!submittedFiles.isEmpty() && probeColumn) {
+				out.println("<form class=mid style=\"margin-top: 1em\" method=post action=\"" + Util.generateHTMLLink(PerformTutorAnswerClasses.class.getSimpleName(), response) + "\">");
 				out.println("<input type=hidden name=sid value=" + submission.getSubmissionid() + ">");
-				out.println("<input type=submit value=\"Antwortklassen-Pipeline auf Abgabe ausführen\">");
+				out.println("<input type=submit value=\"Antwortklassen Probelauf durchführen\">");
 				out.println("</form>");
 			}
 		}

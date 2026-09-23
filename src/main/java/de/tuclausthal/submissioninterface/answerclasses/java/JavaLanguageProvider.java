@@ -43,16 +43,9 @@ import de.tuclausthal.submissioninterface.testframework.tests.impl.JavaSyntaxTes
 import de.tuclausthal.submissioninterface.util.Util;
 
 /**
- * Java {@link LanguageProvider}: student/administrative workspace, javac BUILD, JavaParser AST.
- *
- * <p><b>EXECUTION_ENV:</b> BUILD runs inside the {@code safe-docker} sandbox ({@link SafeDockerRunner})
- * whenever that script is installed; otherwise it falls back to host-side {@code javac} (e.g. local
- * dev/CI without the safe-docker deployment from {@code README.md}). RUN is not implemented yet —
- * it would use the same sandbox once it exists.</p>
- *
- * <p><b>Provider-Policy</b> (see {@code docs/antwortklassen-pipeline.puml}): AST is only produced
- * once BUILD is known to have succeeded — untrusted/uncompilable sources are not parsed for
- * AST-based checks. This is enforced here regardless of any answer-class-level prerequisite.</p>
+ * Java language provider: workspace, javac, JavaParser AST and running test code.
+ * BUILD and RUN use safe-docker when it is installed, otherwise javac or
+ * NoExitSecurityManager on the host. AST is only built after a successful compile.
  */
 public class JavaLanguageProvider implements LanguageProvider {
 	private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
@@ -64,20 +57,29 @@ public class JavaLanguageProvider implements LanguageProvider {
 
 	private final Path submissionPath;
 	private final Path administrativeSourcePath;
+	private final Path dataPath;
 	private Path tempDir;
 	private boolean sandboxAvailable;
 
 	/**
 	 * @param submissionPath directory with the student submission files (required)
 	 * @param administrativeSourcePath optional advisor/task context files; may be {@code null}
+	 * @param dataPath the GATE data root ({@code Configuration.getInstance().getDataPath()});
+	 *        only needed for the RUN host-fallback ({@code NoExitSecurityManager.jar} lookup),
+	 *        may be {@code null} if RUN/FUNCTION_TEST answer classes are not used
 	 */
-	public JavaLanguageProvider(Path submissionPath, Path administrativeSourcePath) {
+	public JavaLanguageProvider(Path submissionPath, Path administrativeSourcePath, Path dataPath) {
 		this.submissionPath = Objects.requireNonNull(submissionPath, "submissionPath");
 		this.administrativeSourcePath = administrativeSourcePath;
+		this.dataPath = dataPath;
+	}
+
+	public JavaLanguageProvider(Path submissionPath, Path administrativeSourcePath) {
+		this(submissionPath, administrativeSourcePath, null);
 	}
 
 	public JavaLanguageProvider(Path submissionPath) {
-		this(submissionPath, null);
+		this(submissionPath, null, null);
 	}
 
 	@Override
@@ -137,7 +139,8 @@ public class JavaLanguageProvider implements LanguageProvider {
 		return switch (type) {
 			case BUILD, SYNTAX -> produceBuild(context);
 			case AST -> produceAst(context);
-			case RUN, PROFILE -> false;
+			case RUN -> produceRun(context);
+			case PROFILE -> false;
 		};
 	}
 
@@ -213,8 +216,7 @@ public class JavaLanguageProvider implements LanguageProvider {
 	}
 
 	private boolean produceAst(EvaluationContext context) {
-		// Provider-Policy (docs/antwortklassen-pipeline.puml): AST is only trusted once the
-		// sources are known to compile, independent of any answer-class-level prerequisite.
+		// AST only after a successful compile.
 		if (!ensureArtifact(ArtifactType.BUILD, context)) {
 			return false;
 		}
@@ -238,5 +240,29 @@ public class JavaLanguageProvider implements LanguageProvider {
 		} catch (Exception e) {
 			return false;
 		}
+	}
+
+	/**
+	 * RUN also needs a successful compile, and a sandbox (safe-docker or
+	 * NoExitSecurityManager). Otherwise the function test is skipped.
+	 */
+	private boolean produceRun(EvaluationContext context) {
+		if (!ensureArtifact(ArtifactType.BUILD, context)) {
+			return false;
+		}
+		BuildArtifact build = context.<BuildArtifact>getArtifact(ArtifactType.BUILD).orElse(null);
+		if (build == null || !build.isSuccessful()) {
+			return false;
+		}
+		Path root = context.getWorkspaceRoot();
+		if (root == null) {
+			return false;
+		}
+		if (!sandboxAvailable && !RunArtifact.isHostSandboxAvailable(dataPath)) {
+			LOG.warn("Neither safe-docker nor NoExitSecurityManager.jar in dataPath are available; RUN artifact unavailable (FUNCTION_TEST answer classes will be SKIPPED).");
+			return false;
+		}
+		context.putArtifact(ArtifactType.RUN, new RunArtifact(root, build.getClassesDirectory(), sandboxAvailable, dataPath));
+		return true;
 	}
 }

@@ -14,7 +14,7 @@
   </context-param>
   <context-param>
     <param-name>datapath</param-name>
-    <param-value>c:\submissionsystem</param-value>
+    <param-value>/Users/marconanka/Documents/Studium/Lehramt/Informatik/ss26_P15_Strickroth_Gate/gate_data</param-value>
   </context-param>
   <context-param>
     <param-name>servername</param-name>
@@ -91,7 +91,7 @@
     </init-param>
     <init-param>
       <param-name>verify</param-name>
-      <param-value>de.tuclausthal.submissioninterface.authfilter.authentication.verify.impl.LDAPVerify</param-value>
+      <param-value>de.tuclausthal.submissioninterface.authfilter.authentication.verify.impl.FakeVerify</param-value>
     </init-param>
     <init-param>
       <param-name>PROVIDER_URL</param-name>

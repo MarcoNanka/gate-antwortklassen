@@ -87,6 +87,26 @@ class AnswerClassPipelineTest {
 	}
 
 	@Test
+	void dependentListedBeforePrerequisiteStillRunsAfterItMatches() throws Exception {
+		FakeLanguageProvider provider = new FakeLanguageProvider(ArtifactType.AST);
+		CheckerRegistry registry = new CheckerRegistry();
+		registry.register("COMPILE_OK", astChecker(CheckerOutcome.matched("compiles")));
+		registry.register("WHILE_LOOP", astChecker(CheckerOutcome.matched("while found")));
+
+		// created first, but depends on the compile answer class that was created later
+		AnswerClassToEvaluate whileAc = new AnswerClassToEvaluate(1, "WHILE_LOOP", 3, List.of(2));
+		AnswerClassToEvaluate compileAc = new AnswerClassToEvaluate(2, "COMPILE_OK", 3);
+
+		List<PipelineResult> results = pipeline.run(PipelineTrigger.STUDENT, true, List.of(whileAc, compileAc), provider, registry, sink);
+
+		assertEquals(2, results.size());
+		assertEquals(2, results.get(0).getAnswerClassId());
+		assertEquals(AnswerClassResultStatus.MATCHED, results.get(0).getStatus());
+		assertEquals(1, results.get(1).getAnswerClassId());
+		assertEquals(AnswerClassResultStatus.MATCHED, results.get(1).getStatus());
+	}
+
+	@Test
 	void missingPrerequisiteStoresSkipped() throws Exception {
 		FakeLanguageProvider provider = new FakeLanguageProvider(ArtifactType.AST);
 		CheckerRegistry registry = registryWithAstChecker("UNIT_STYLE", CheckerOutcome.matched("ok"));
@@ -176,7 +196,7 @@ class AnswerClassPipelineTest {
 			}
 
 			@Override
-			public CheckerOutcome check(EvaluationContext context) {
+			public CheckerOutcome check(EvaluationContext context, AnswerClassToEvaluate answerClass) {
 				throw new IllegalStateException("boom");
 			}
 		});
@@ -203,7 +223,7 @@ class AnswerClassPipelineTest {
 			}
 
 			@Override
-			public CheckerOutcome check(EvaluationContext context) {
+			public CheckerOutcome check(EvaluationContext context, AnswerClassToEvaluate answerClass) {
 				return outcome;
 			}
 		};

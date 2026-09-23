@@ -1,0 +1,9 @@
+{
+  "java.compile.nullAnalysis.mode": "disabled",
+  "java.test.config": {
+    "name": "GATE DB tests",
+    "env": {
+      "GATE_DB_TESTS": "1"
+    }
+  }
+}

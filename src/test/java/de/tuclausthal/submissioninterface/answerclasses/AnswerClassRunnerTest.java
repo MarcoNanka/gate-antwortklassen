@@ -20,6 +20,7 @@ package de.tuclausthal.submissioninterface.answerclasses;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.nio.file.Files;
@@ -69,6 +70,49 @@ class AnswerClassRunnerTest extends BasicTest {
 			AnswerClassResult persisted = DAOFactory.AnswerClassResultDAOIf(session).getResult(DAOFactory.AnswerClassDAOIf(session).getAnswerClass(1), submission);
 			assertNotNull(persisted);
 			assertEquals(AnswerClassResultStatus.MATCHED, persisted.getStatus());
+		} finally {
+			tx.rollback();
+		}
+	}
+
+	@Test
+	void previewDoesNotOverwriteStoredResults(@TempDir Path dataPath) throws Exception {
+		Submission submission = DAOFactory.SubmissionDAOIf(session).getSubmission(7);
+		writeSubmissionFile(dataPath, submission, "HelloWorld.java", HELLO_WORLD_NO_WHILE);
+
+		Transaction tx = session.beginTransaction();
+		try {
+			List<PipelineResult> results = new AnswerClassRunner(session).preview(submission, dataPath);
+
+			assertEquals(2, results.size());
+			assertEquals(AnswerClassResultStatus.MATCHED, results.get(0).getStatus());
+
+			AnswerClassResult stored = DAOFactory.AnswerClassResultDAOIf(session).getResult(DAOFactory.AnswerClassDAOIf(session).getAnswerClass(1), submission);
+			assertNotNull(stored);
+			assertEquals(AnswerClassResultStatus.NOT_MATCHED, stored.getStatus());
+			assertEquals(AnswerClassResultSource.STUDENT_PREVIEW, stored.getSource());
+			assertNull(DAOFactory.AnswerClassResultDAOIf(session).getResult(DAOFactory.AnswerClassDAOIf(session).getAnswerClass(2), submission));
+		} finally {
+			tx.rollback();
+		}
+	}
+
+	@Test
+	void studentPreviewDoesNotOverwriteStoredResults(@TempDir Path dataPath) throws Exception {
+		Submission submission = DAOFactory.SubmissionDAOIf(session).getSubmission(7);
+		writeSubmissionFile(dataPath, submission, "HelloWorld.java", HELLO_WORLD_NO_WHILE);
+
+		Transaction tx = session.beginTransaction();
+		try {
+			List<PipelineResult> results = new AnswerClassRunner(session).preview(PipelineTrigger.STUDENT, submission, dataPath);
+
+			assertEquals(2, results.size());
+			assertEquals(AnswerClassResultSource.STUDENT_PREVIEW, results.get(0).getSource());
+
+			AnswerClassResult stored = DAOFactory.AnswerClassResultDAOIf(session).getResult(DAOFactory.AnswerClassDAOIf(session).getAnswerClass(1), submission);
+			assertNotNull(stored);
+			assertEquals(AnswerClassResultStatus.NOT_MATCHED, stored.getStatus());
+			assertEquals(AnswerClassResultSource.STUDENT_PREVIEW, stored.getSource());
 		} finally {
 			tx.rollback();
 		}

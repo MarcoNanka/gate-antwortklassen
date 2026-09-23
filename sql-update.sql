@@ -167,7 +167,7 @@ CREATE TABLE IF NOT EXISTS `answerclasses` (
   `detectionType` varchar(50) NOT NULL DEFAULT '',
   `programmingLanguage` varchar(32) NOT NULL DEFAULT 'JAVA',
   `timesRunnableByStudents` int(11) NOT NULL DEFAULT 3,
-  `giveDetailsToStudents` tinyint(1) NOT NULL DEFAULT 1,
+  `giveDetailsToStudents` tinyint(1) NOT NULL DEFAULT 0,
   `needsToRun` tinyint(1) NOT NULL DEFAULT 1,
   PRIMARY KEY (`id`),
   CONSTRAINT `FK_answerclasses_task` FOREIGN KEY (`taskid`) REFERENCES `tasks` (`taskid`) ON DELETE CASCADE ON UPDATE RESTRICT
@@ -216,3 +216,17 @@ CREATE TABLE IF NOT EXISTS `answerclassresults` (
 
 -- Antwortklassen: shared programming language (task-wide, synced via advisor form)
 ALTER TABLE `answerclasses` ADD COLUMN IF NOT EXISTS `programmingLanguage` varchar(32) NOT NULL DEFAULT 'JAVA';
+
+-- Antwortklassen: Funktionstests (detectionType FUNCTION_TEST; ArtifactType.RUN, siehe RunArtifact)
+ALTER TABLE `answerclasses` ADD COLUMN IF NOT EXISTS `functionTestCode` text DEFAULT NULL;
+ALTER TABLE `answerclasses` ADD COLUMN IF NOT EXISTS `functionTestExpectedOutput` text DEFAULT NULL;
+
+-- Antwortklassen: while-Schleifen zählen statt nur "vorhanden" (detectionType WHILE_LOOP);
+-- Defaults (min=1, max=unbegrenzt) reproduzieren das bisherige Verhalten für Bestandsdaten.
+ALTER TABLE `answerclasses` ADD COLUMN IF NOT EXISTS `whileLoopMin` int(11) NOT NULL DEFAULT 1;
+ALTER TABLE `answerclasses` ADD COLUMN IF NOT EXISTS `whileLoopMax` int(11) DEFAULT NULL;
+
+-- Antwortklassen: for-Schleifen zählen (detectionType FOR_LOOP), analog zu WHILE_LOOP; z.B.
+-- FOR_LOOP max=0 + WHILE_LOOP min=1 zeigt, dass eine Wiederholung mit while statt for gelöst wurde.
+ALTER TABLE `answerclasses` ADD COLUMN IF NOT EXISTS `forLoopMin` int(11) NOT NULL DEFAULT 1;
+ALTER TABLE `answerclasses` ADD COLUMN IF NOT EXISTS `forLoopMax` int(11) DEFAULT NULL;

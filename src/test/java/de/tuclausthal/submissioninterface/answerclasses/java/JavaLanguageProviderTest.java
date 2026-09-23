@@ -142,7 +142,7 @@ class JavaLanguageProviderTest {
 		assertEquals(AnswerClassResultStatus.MATCHED, results.get(0).getStatus());
 		assertEquals(AnswerClassResultSource.STUDENT_PREVIEW, results.get(0).getSource());
 		assertEquals(AnswerClassResultStatus.MATCHED, results.get(1).getStatus());
-		assertEquals("while loop present", results.get(1).getDetails());
+		assertEquals("1 while-Schleife(n) gefunden (erwartet: >= 1)", results.get(1).getDetails());
 	}
 
 	@Test
@@ -172,6 +172,120 @@ class JavaLanguageProviderTest {
 		assertEquals(AnswerClassResultStatus.MATCHED, results.get(0).getStatus());
 		assertEquals(AnswerClassResultStatus.NOT_MATCHED, results.get(1).getStatus());
 		assertEquals(AnswerClassResultSource.MANUAL, results.get(1).getSource());
+	}
+
+	@Test
+	void whileLoopExactlyOneMatchesWithMinMaxOne() throws Exception {
+		Path submission = resourceDir("answerclasses/java/whileloop"); // WithWhile.java has exactly 1 while loop
+		JavaLanguageProvider provider = new JavaLanguageProvider(submission);
+		List<AnswerClassToEvaluate> answerClasses = List.of(AnswerClassToEvaluate.builder(1, JavaDetectionTypes.WHILE_LOOP, 1).whileLoopRange(1, 1).build());
+
+		List<PipelineResult> results = new AnswerClassPipeline().run(PipelineTrigger.BATCH, true, answerClasses, provider, JavaCheckerRegistry.createDefault(), result -> {
+		});
+
+		assertEquals(AnswerClassResultStatus.MATCHED, results.get(0).getStatus());
+		assertEquals("1 while-Schleife(n) gefunden (erwartet: genau 1)", results.get(0).getDetails());
+	}
+
+	@Test
+	void whileLoopForbiddenNotMatchedWhenMaxZero() throws Exception {
+		Path submission = resourceDir("answerclasses/java/whileloop"); // WithWhile.java has exactly 1 while loop
+		JavaLanguageProvider provider = new JavaLanguageProvider(submission);
+		List<AnswerClassToEvaluate> answerClasses = List.of(AnswerClassToEvaluate.builder(1, JavaDetectionTypes.WHILE_LOOP, 1).whileLoopRange(0, 0).build());
+
+		List<PipelineResult> results = new AnswerClassPipeline().run(PipelineTrigger.BATCH, true, answerClasses, provider, JavaCheckerRegistry.createDefault(), result -> {
+		});
+
+		assertEquals(AnswerClassResultStatus.NOT_MATCHED, results.get(0).getStatus());
+		assertEquals("1 while-Schleife(n) gefunden (erwartet: genau 0)", results.get(0).getDetails());
+	}
+
+	@Test
+	void whileLoopForbiddenMatchesWhenNoWhileLoopPresent() throws Exception {
+		Path submission = resourceDir("answerclasses/java/hello"); // no while loop at all
+		JavaLanguageProvider provider = new JavaLanguageProvider(submission);
+		List<AnswerClassToEvaluate> answerClasses = List.of(AnswerClassToEvaluate.builder(1, JavaDetectionTypes.WHILE_LOOP, 1).whileLoopRange(0, 0).build());
+
+		List<PipelineResult> results = new AnswerClassPipeline().run(PipelineTrigger.BATCH, true, answerClasses, provider, JavaCheckerRegistry.createDefault(), result -> {
+		});
+
+		assertEquals(AnswerClassResultStatus.MATCHED, results.get(0).getStatus());
+	}
+
+	@Test
+	void forLoopExactlyOneMatchesWithMinMaxOne() throws Exception {
+		Path submission = resourceDir("answerclasses/java/forloop"); // WithFor.java has exactly 1 for loop
+		JavaLanguageProvider provider = new JavaLanguageProvider(submission);
+		List<AnswerClassToEvaluate> answerClasses = List.of(AnswerClassToEvaluate.builder(1, JavaDetectionTypes.FOR_LOOP, 1).forLoopRange(1, 1).build());
+
+		List<PipelineResult> results = new AnswerClassPipeline().run(PipelineTrigger.BATCH, true, answerClasses, provider, JavaCheckerRegistry.createDefault(), result -> {
+		});
+
+		assertEquals(AnswerClassResultStatus.MATCHED, results.get(0).getStatus());
+		assertEquals("1 for-Schleife(n) gefunden (erwartet: genau 1)", results.get(0).getDetails());
+	}
+
+	@Test
+	void forLoopForbiddenNotMatchedWhenMaxZero() throws Exception {
+		Path submission = resourceDir("answerclasses/java/forloop"); // WithFor.java has exactly 1 for loop
+		JavaLanguageProvider provider = new JavaLanguageProvider(submission);
+		List<AnswerClassToEvaluate> answerClasses = List.of(AnswerClassToEvaluate.builder(1, JavaDetectionTypes.FOR_LOOP, 1).forLoopRange(0, 0).build());
+
+		List<PipelineResult> results = new AnswerClassPipeline().run(PipelineTrigger.BATCH, true, answerClasses, provider, JavaCheckerRegistry.createDefault(), result -> {
+		});
+
+		assertEquals(AnswerClassResultStatus.NOT_MATCHED, results.get(0).getStatus());
+		assertEquals("1 for-Schleife(n) gefunden (erwartet: genau 0)", results.get(0).getDetails());
+	}
+
+	@Test
+	void whileLoopUsedInsteadOfForLoopIsDetected() throws Exception {
+		// WithWhile.java solves the repetition with a while loop and contains no for loop at all
+		// -> combining WHILE_LOOP min=1 with FOR_LOOP max=0 detects "solved via while, not for".
+		Path submission = resourceDir("answerclasses/java/whileloop");
+		JavaLanguageProvider provider = new JavaLanguageProvider(submission);
+		List<AnswerClassToEvaluate> answerClasses = List.of(AnswerClassToEvaluate.builder(1, JavaDetectionTypes.WHILE_LOOP, 1).whileLoopRange(1, null).build(), AnswerClassToEvaluate.builder(2, JavaDetectionTypes.FOR_LOOP, 1).forLoopRange(0, 0).build());
+
+		List<PipelineResult> results = new AnswerClassPipeline().run(PipelineTrigger.BATCH, true, answerClasses, provider, JavaCheckerRegistry.createDefault(), result -> {
+		});
+
+		assertEquals(2, results.size());
+		assertEquals(AnswerClassResultStatus.MATCHED, results.get(0).getStatus());
+		assertEquals(AnswerClassResultStatus.MATCHED, results.get(1).getStatus());
+	}
+
+	@Test
+	void runArtifactUnavailableWithoutSandboxOrDataPath() throws Exception {
+		// no safe-docker in this dev/CI environment, and no dataPath given -> no
+		// NoExitSecurityManager.jar can be found either, so RUN must stay unavailable
+		JavaLanguageProvider provider = new JavaLanguageProvider(resourceDir("answerclasses/java/functiontest"));
+		EvaluationContext context = new EvaluationContext(PipelineTrigger.BATCH);
+		provider.assembleWorkspace(context);
+		try {
+			assertFalse(provider.ensureArtifact(ArtifactType.RUN, context));
+			assertFalse(context.hasArtifact(ArtifactType.RUN));
+		} finally {
+			provider.cleanupExecutionEnv(context);
+		}
+	}
+
+	@Test
+	void pipelineFunctionTestMatchesWithHostFallbackSandbox() throws Exception {
+		Path submission = resourceDir("answerclasses/java/functiontest");
+		Path dataPath = Files.createTempDirectory("functiontest-datapath");
+		try {
+			Files.copy(Path.of("SecurityManager/NoExitSecurityManager.jar"), dataPath.resolve("NoExitSecurityManager.jar"));
+			JavaLanguageProvider provider = new JavaLanguageProvider(submission, null, dataPath);
+			List<AnswerClassToEvaluate> answerClasses = List.of(AnswerClassToEvaluate.builder(1, JavaDetectionTypes.FUNCTION_TEST, 3).functionTestCode("System.out.println(Adder.add(2, 3));").functionTestExpectedOutput("5").build());
+
+			List<PipelineResult> results = new AnswerClassPipeline().run(PipelineTrigger.BATCH, true, answerClasses, provider, JavaCheckerRegistry.createDefault(), result -> {
+			});
+
+			assertEquals(1, results.size());
+			assertEquals(AnswerClassResultStatus.MATCHED, results.get(0).getStatus());
+		} finally {
+			de.tuclausthal.submissioninterface.util.Util.recursiveDelete(dataPath);
+		}
 	}
 
 	@Test
