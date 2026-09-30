@@ -82,10 +82,12 @@ public class ShowSubmission extends HttpServlet {
 		request.setAttribute("submittedFiles", Util.listFilesAsRelativeStringListSorted(Util.constructPath(Configuration.getInstance().getDataPath(), submission)));
 		String previewKey = TutorAnswerClassPreview.sessionKey(submission.getSubmissionid());
 		Object storedPreview = request.getSession().getAttribute(previewKey);
+		// Shown exactly once, right after "Antwortklassen Probelauf durchführen" redirects here:
+		// removed from the session immediately so leaving/reloading the page afterwards shows an
+		// empty "Probelauf"-column again instead of the stale result.
+		request.getSession().removeAttribute(previewKey);
 		if (storedPreview instanceof TutorAnswerClassPreview.Snapshot snapshot && snapshot.matches(submission)) {
 			request.setAttribute("answerClassPreview", snapshot.getResults());
-		} else if (storedPreview != null) {
-			request.getSession().removeAttribute(previewKey);
 		}
 		getServletContext().getNamedDispatcher(ShowSubmissionView.class.getSimpleName()).forward(request, response);
 	}

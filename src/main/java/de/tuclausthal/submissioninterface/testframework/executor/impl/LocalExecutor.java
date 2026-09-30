@@ -20,6 +20,7 @@ package de.tuclausthal.submissioninterface.testframework.executor.impl;
 
 import java.lang.invoke.MethodHandles;
 import java.nio.file.Path;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -61,6 +62,18 @@ public class LocalExecutor implements TestExecutorIf {
 	public Future<TestExecutorTestResult> executeTask(TestTask executionTask) {
 		TestExecutorWorker worker = new TestExecutorWorker(dataPath, executionTask);
 		return executorService.submit(worker);
+	}
+
+	/**
+	 * Submits an arbitrary background job (e.g. an answer-class pipeline run) to this same
+	 * bounded thread pool ({@code CORES}), so that it competes for the same limited capacity as
+	 * classic {@code Test}s instead of getting its own, separately-sized pool. Deliberately does
+	 * not go through {@code TestTask}/{@code Test} - callers outside the classic test framework
+	 * (see {@code answerclasses.AnswerClassExecutor}) reuse only this executor's capacity limit,
+	 * not the {@code Test} entity/DAO hierarchy.
+	 */
+	public <T> Future<T> executeGenericTask(Callable<T> task) {
+		return executorService.submit(task);
 	}
 
 	public void shutdown() {

@@ -20,10 +20,13 @@ package de.tuclausthal.submissioninterface.servlets.controller;
 
 import java.io.IOException;
 import java.lang.invoke.MethodHandles;
+import java.nio.file.Path;
 import java.time.ZonedDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServlet;
@@ -36,10 +39,12 @@ import org.hibernate.Transaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import de.tuclausthal.submissioninterface.answerclasses.AnswerClassExecutor;
 import de.tuclausthal.submissioninterface.answerclasses.AnswerClassRunner;
 import de.tuclausthal.submissioninterface.answerclasses.PipelineResult;
 import de.tuclausthal.submissioninterface.answerclasses.PipelineTrigger;
-import de.tuclausthal.submissioninterface.persistence.dao.AnswerClassResultDAOIf;
+import de.tuclausthal.submissioninterface.authfilter.SessionAdapter;
+import de.tuclausthal.submissioninterface.authfilter.SessionAdapter.QueuedAnswerClassRun;
 import de.tuclausthal.submissioninterface.persistence.dao.AnswerClassRunCountDAOIf;
 import de.tuclausthal.submissioninterface.persistence.dao.DAOFactory;
 import de.tuclausthal.submissioninterface.persistence.dao.ParticipationDAOIf;
@@ -54,8 +59,10 @@ import de.tuclausthal.submissioninterface.persistence.datamodel.Task;
 import de.tuclausthal.submissioninterface.servlets.GATEController;
 import de.tuclausthal.submissioninterface.servlets.RequestAdapter;
 import de.tuclausthal.submissioninterface.servlets.view.MessageView;
+import de.tuclausthal.submissioninterface.servlets.view.PerformStudentTestRunningView;
 import de.tuclausthal.submissioninterface.servlets.view.ShowAnswerClassResultsView;
 import de.tuclausthal.submissioninterface.util.Configuration;
+import de.tuclausthal.submissioninterface.util.HibernateSessionHelper;
 import de.tuclausthal.submissioninterface.util.Util;
 
 /**
@@ -65,15 +72,20 @@ import de.tuclausthal.submissioninterface.util.Util;
  * page shows it once after the redirect; a reload does not. After the deadline the task page
  * shows batch results and tutor grades only.</p>
  *
- * <p>Mirrors {@code PerformStudentTest} in that it runs synchronously and uses
- * POST-then-redirect so a reload never starts another run. The run-limit check lives here,
- * not in {@code AnswerClassPipeline}.</p>
+ * <p>Mirrors {@code PerformStudentTest}: {@code doPost} only submits the run to
+ * {@link AnswerClassExecutor} (so it does not block this Tomcat request thread for the
+ * potentially multi-second pipeline run) and redirects; {@code doGet} either shows a "wird
+ * ausgeführt, bitte warten" polling page (auto-refresh, like {@code PerformStudentTestRunningView})
+ * while the background run is not done yet, or - once it is done - validates it, spends the run
+ * budget ({@code canSeeResultAndIncrementCounterTransaction}, done here rather than at kickoff so
+ * a failed/invalidated run never costs an attempt) and shows the result. Only one run may be
+ * queued per session at a time (see {@code SessionAdapter.QueuedAnswerClassRun}), same as
+ * {@code SessionAdapter.QueuedTest}.</p>
  */
 @GATEController
 public class PerformStudentAnswerClasses extends HttpServlet {
 	private static final long serialVersionUID = 1L;
 	private static final Logger LOG = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
-	private static final String PREVIEW_SESSION_KEY = "studentAnswerClassPreview-";
 
 	@Override
 	public void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException {
@@ -103,19 +115,75 @@ public class PerformStudentAnswerClasses extends HttpServlet {
 			return;
 		}
 
+		SessionAdapter sa = RequestAdapter.getSessionAdapter(request);
+		QueuedAnswerClassRun queued = sa.getQueuedAnswerClassRun();
+		Map<Integer, AnswerClassResultStatus> preview = null;
+
+		if (queued != null && queued.taskId == task.getTaskid()) {
+			if (!queued.resultFuture.isDone()) {
+				request.setAttribute("task", task);
+				request.setAttribute("refreshurl", Util.generateRedirectURL(PerformStudentAnswerClasses.class.getSimpleName() + "?taskid=" + task.getTaskid(), response));
+				request.setAttribute("redirectTime", 5);
+				request.setAttribute("runningPageTitle", "Antwortklassen...");
+				request.setAttribute("runningMessage", "Die Antwortklassen werden im Hintergrund ausgeführt. Bitte warten.<br>");
+				getServletContext().getNamedDispatcher(PerformStudentTestRunningView.class.getSimpleName()).forward(request, response);
+				return;
+			}
+
+			sa.setQueuedAnswerClassRun(null);
+
+			List<PipelineResult> previewResults;
+			try {
+				previewResults = queued.resultFuture.get();
+			} catch (InterruptedException e) {
+				Thread.currentThread().interrupt();
+				LOG.warn("Was interrupted while waiting for answer classes to finish", e);
+				request.setAttribute("title", "Beim Ausführen der Antwortklassen ist ein Fehler aufgetreten.");
+				getServletContext().getNamedDispatcher(MessageView.class.getSimpleName()).forward(request, response);
+				return;
+			} catch (ExecutionException e) {
+				LOG.error("Failed to run answer classes for submission {}", submission.getSubmissionid(), e.getCause());
+				request.setAttribute("title", "Beim Ausführen der Antwortklassen ist ein Fehler aufgetreten.");
+				getServletContext().getNamedDispatcher(MessageView.class.getSimpleName()).forward(request, response);
+				return;
+			}
+
+			if (!queued.submissionLastChanged.equals(submission.getLastModified())) {
+				request.setAttribute("title", "Ergebnis nicht mehr gültig");
+				request.setAttribute("message", "<div class=mid>Das Ergebnis der Antwortklassen wurde durch eine zwischenzeitlich geänderte Abgabe ungültig. Bitte erneut ausführen.<p><a href=\"" + Util.generateHTMLLink(ShowTask.class.getSimpleName() + "?taskid=" + task.getTaskid(), response) + "\">zurück zur Aufgabe</a></div>");
+				getServletContext().getNamedDispatcher(MessageView.class.getSimpleName()).forward(request, response);
+				return;
+			}
+
+			AnswerClassRunCountDAOIf runCountDAO = DAOFactory.AnswerClassRunCountDAOIf(session);
+			Transaction tx = session.beginTransaction();
+			session.lock(submission, LockMode.PESSIMISTIC_WRITE);
+			if (!runCountDAO.canSeeResultAndIncrementCounterTransaction(task, RequestAdapter.getUser(request))) {
+				tx.commit();
+				request.setAttribute("title", "Antwortklassen können nicht mehr ausgeführt werden. Limit erreicht.");
+				request.setAttribute("message", "<div class=mid><a href=\"" + Util.generateHTMLLink(ShowTask.class.getSimpleName() + "?taskid=" + task.getTaskid(), response) + "\">zurück zur Aufgabe</a></div>");
+				getServletContext().getNamedDispatcher(MessageView.class.getSimpleName()).forward(request, response);
+				return;
+			}
+			tx.commit();
+
+			Map<Integer, AnswerClassResultStatus> previewStatuses = new HashMap<>();
+			for (PipelineResult previewResult : previewResults) {
+				previewStatuses.put(previewResult.getAnswerClassId(), previewResult.getStatus());
+			}
+			preview = previewStatuses;
+		}
+
 		List<AnswerClass> answerClasses = DAOFactory.AnswerClassDAOIf(session).getAnswerClassesForTask(task);
 		List<AnswerClassResult> results = DAOFactory.AnswerClassResultDAOIf(session).getResultsForSubmission(submission);
 		int runnable = DAOFactory.AnswerClassRunCountDAOIf(session).canStillRunXTimes(task, RequestAdapter.getUser(request));
-		String previewKey = PREVIEW_SESSION_KEY + task.getTaskid();
-		Object preview = request.getSession().getAttribute(previewKey);
-		request.getSession().removeAttribute(previewKey);
 
 		request.setAttribute("task", task);
 		request.setAttribute("submission", submission);
 		request.setAttribute("answerClasses", answerClasses);
 		request.setAttribute("results", results);
 		request.setAttribute("runnable", runnable);
-		if (preview instanceof Map<?, ?>) {
+		if (preview != null) {
 			request.setAttribute("answerClassPreview", preview);
 		}
 		getServletContext().getNamedDispatcher(ShowAnswerClassResultsView.class.getSimpleName()).forward(request, response);
@@ -157,31 +225,53 @@ public class PerformStudentAnswerClasses extends HttpServlet {
 		}
 
 		AnswerClassRunCountDAOIf runCountDAO = DAOFactory.AnswerClassRunCountDAOIf(session);
-		Transaction tx = session.beginTransaction();
-		session.lock(submission, LockMode.PESSIMISTIC_WRITE);
-		if (!runCountDAO.canSeeResultAndIncrementCounterTransaction(task, RequestAdapter.getUser(request))) {
-			tx.commit();
+		if (runCountDAO.canStillRunXTimes(task, RequestAdapter.getUser(request)) == 0) {
 			request.setAttribute("title", "Antwortklassen können nicht mehr ausgeführt werden. Limit erreicht.");
 			request.setAttribute("message", "<div class=mid><a href=\"" + Util.generateHTMLLink(ShowTask.class.getSimpleName() + "?taskid=" + task.getTaskid(), response) + "\">zurück zur Aufgabe</a></div>");
 			getServletContext().getNamedDispatcher(MessageView.class.getSimpleName()).forward(request, response);
 			return;
 		}
-		List<PipelineResult> previewResults;
-		try {
-			previewResults = new AnswerClassRunner(session).preview(PipelineTrigger.STUDENT, submission, Configuration.getInstance().getDataPath());
+
+		SessionAdapter sa = RequestAdapter.getSessionAdapter(request);
+		Transaction tx = session.beginTransaction();
+		session.lock(submission, LockMode.PESSIMISTIC_WRITE);
+		QueuedAnswerClassRun queued = sa.getQueuedAnswerClassRun();
+		if (queued != null) {
 			tx.commit();
-		} catch (Exception e) {
-			tx.rollback();
-			LOG.error("Failed to run answer classes for submission {}", submission.getSubmissionid(), e);
-			request.setAttribute("title", "Beim Ausführen der Antwortklassen ist ein Fehler aufgetreten.");
+			request.setAttribute("title", "Es kann immer nur eine Antwortklassen-Ausführung zu einer Zeit angefragt werden.");
+			request.setAttribute("message", "<div class=mid><a href=\"" + Util.generateHTMLLink(PerformStudentAnswerClasses.class.getSimpleName() + "?taskid=" + queued.taskId, response) + "\">weiter zum bereits angefragten Lauf</a></div>");
 			getServletContext().getNamedDispatcher(MessageView.class.getSimpleName()).forward(request, response);
 			return;
 		}
-		Map<Integer, AnswerClassResultStatus> previewStatuses = new HashMap<>();
-		for (PipelineResult previewResult : previewResults) {
-			previewStatuses.put(previewResult.getAnswerClassId(), previewResult.getStatus());
-		}
-		request.getSession().setAttribute(PREVIEW_SESSION_KEY + task.getTaskid(), previewStatuses);
+
+		final int submissionId = submission.getSubmissionid();
+		final Path dataPath = Configuration.getInstance().getDataPath();
+		Future<List<PipelineResult>> resultFuture = AnswerClassExecutor.execute(() -> runInBackground(submissionId, dataPath));
+		sa.setQueuedAnswerClassRun(new QueuedAnswerClassRun(task.getTaskid(), submission.getLastModified(), resultFuture));
+		tx.commit();
 		response.sendRedirect(Util.generateRedirectURL(PerformStudentAnswerClasses.class.getSimpleName() + "?taskid=" + task.getTaskid(), response));
+	}
+
+	/**
+	 * Runs on a {@code LocalExecutor} worker thread, not the calling Tomcat request thread - so,
+	 * like {@code TestTask#performTask}, it opens and closes its own Hibernate {@code Session}
+	 * instead of reusing the caller's.
+	 */
+	private static List<PipelineResult> runInBackground(int submissionId, Path dataPath) throws Exception {
+		Session bgSession = HibernateSessionHelper.getSessionFactory().openSession();
+		try {
+			Transaction tx = bgSession.beginTransaction();
+			try {
+				Submission bgSubmission = DAOFactory.SubmissionDAOIf(bgSession).getSubmission(submissionId);
+				List<PipelineResult> result = new AnswerClassRunner(bgSession).preview(PipelineTrigger.STUDENT, bgSubmission, dataPath);
+				tx.commit();
+				return result;
+			} catch (Exception e) {
+				tx.rollback();
+				throw e;
+			}
+		} finally {
+			bgSession.close();
+		}
 	}
 }

@@ -368,28 +368,34 @@ public class ShowTaskStudentView extends HttpServlet {
 			List<AnswerClass> visibleAnswerClasses = answerClasses.stream().filter(answerClass -> answerClass.getTimesRunnableByStudents() > 0).collect(Collectors.toList());
 			if (!submittedFiles.isEmpty() && !visibleAnswerClasses.isEmpty()) {
 				boolean canRunAnswerClasses = task.getDeadline().isAfter(ZonedDateTime.now()) && !(task.isAllowPrematureSubmissionClosing() && submission.isClosed());
-				out.println("<p><h2>Antwortklassen:</h2>");
-				if (canRunAnswerClasses) {
-					int answerClassesRunnable = DAOFactory.AnswerClassRunCountDAOIf(session).canStillRunXTimes(task, participation.getUser());
-					if (answerClassesRunnable > 0) {
-						out.println("<form method=post action=\"" + Util.generateHTMLLink(PerformStudentAnswerClasses.class.getSimpleName() + "?taskid=" + task.getTaskid(), response) + "\"><input type=submit value=\"Antwortklassen ausführen\"></form>");
-						out.println(" (noch " + answerClassesRunnable + "x ausführbar)");
+				// The official (batch/automatic) results are only meaningful together with the
+				// grading, so - like the "Bewertung" section below - they stay hidden until the
+				// task's Punktedatum (task.getShowPoints()), not already right after the deadline.
+				boolean pointsVisible = task.getShowPoints() != null && task.getShowPoints().isBefore(ZonedDateTime.now());
+				if (canRunAnswerClasses || pointsVisible) {
+					out.println("<p><h2>Antwortklassen:</h2>");
+					if (canRunAnswerClasses) {
+						int answerClassesRunnable = DAOFactory.AnswerClassRunCountDAOIf(session).canStillRunXTimes(task, participation.getUser());
+						if (answerClassesRunnable > 0) {
+							out.println("<form method=post action=\"" + Util.generateHTMLLink(PerformStudentAnswerClasses.class.getSimpleName() + "?taskid=" + task.getTaskid(), response) + "\"><input type=submit value=\"Antwortklassen ausführen\"></form>");
+							out.println(" (noch " + answerClassesRunnable + "x ausführbar)");
+						} else {
+							out.println("Limit erreicht");
+						}
 					} else {
-						out.println("Limit erreicht");
+						List<AnswerClassResult> answerClassResults = DAOFactory.AnswerClassResultDAOIf(session).getResultsForSubmission(submission);
+						Map<Integer, AnswerClassResult> answerClassResultByAnswerClassId = answerClassResults.stream().collect(Collectors.toMap(result -> result.getAnswerClass().getId(), Function.identity()));
+						out.println("<table>");
+						out.println("<tr><th>Titel</th><th>Beschreibung</th><th>Ergebnis</th></tr>");
+						for (AnswerClass answerClass : visibleAnswerClasses) {
+							out.println("<tr>");
+							out.println("<th>" + Util.escapeHTML(answerClass.getTitle()) + "</th>");
+							out.println("<td>" + Util.textToHTML(answerClass.getDescription() == null ? "" : answerClass.getDescription()) + "</td>");
+							out.println("<td><b>" + ShowAnswerClassResult.coloredStatusLabel(StudentAnswerClassVisibility.officialStatus(answerClassResultByAnswerClassId.get(answerClass.getId()))) + "</b></td>");
+							out.println("</tr>");
+						}
+						out.println("</table>");
 					}
-				} else {
-					List<AnswerClassResult> answerClassResults = DAOFactory.AnswerClassResultDAOIf(session).getResultsForSubmission(submission);
-					Map<Integer, AnswerClassResult> answerClassResultByAnswerClassId = answerClassResults.stream().collect(Collectors.toMap(result -> result.getAnswerClass().getId(), Function.identity()));
-					out.println("<table>");
-					out.println("<tr><th>Titel</th><th>Beschreibung</th><th>Ergebnis</th></tr>");
-					for (AnswerClass answerClass : visibleAnswerClasses) {
-						out.println("<tr>");
-						out.println("<th>" + Util.escapeHTML(answerClass.getTitle()) + "</th>");
-						out.println("<td>" + Util.textToHTML(answerClass.getDescription() == null ? "" : answerClass.getDescription()) + "</td>");
-						out.println("<td><b>" + ShowAnswerClassResult.statusLabel(StudentAnswerClassVisibility.officialStatus(answerClassResultByAnswerClassId.get(answerClass.getId()))) + "</b></td>");
-						out.println("</tr>");
-					}
-					out.println("</table>");
 				}
 			}
 		} else {

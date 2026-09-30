@@ -20,11 +20,13 @@ package de.tuclausthal.submissioninterface.authfilter;
 
 import java.io.Serializable;
 import java.time.ZonedDateTime;
+import java.util.List;
 import java.util.concurrent.Future;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 
+import de.tuclausthal.submissioninterface.answerclasses.PipelineResult;
 import de.tuclausthal.submissioninterface.persistence.dao.DAOFactory;
 import de.tuclausthal.submissioninterface.persistence.datamodel.User;
 import de.tuclausthal.submissioninterface.servlets.RequestAdapter;
@@ -94,6 +96,33 @@ public class SessionAdapter {
 			this.testId = testId;
 			this.submissionLastChanged = submissionLastChanged;
 			this.testResult = testResult;
+		}
+	}
+
+	/**
+	 * One in-flight student answer-class preview run (see {@code PerformStudentAnswerClasses}
+	 * and {@code answerclasses.AnswerClassExecutor}). Single slot per session, same "only one at
+	 * a time" semantics as {@link QueuedTest}.
+	 */
+	public QueuedAnswerClassRun getQueuedAnswerClassRun() {
+		return (QueuedAnswerClassRun) session.getAttribute("queuedAnswerClassRun");
+	}
+
+	public void setQueuedAnswerClassRun(QueuedAnswerClassRun queuedAnswerClassRun) {
+		session.setAttribute("queuedAnswerClassRun", queuedAnswerClassRun);
+	}
+
+	public static class QueuedAnswerClassRun implements Serializable {
+		private static final long serialVersionUID = 1L;
+
+		public int taskId;
+		public ZonedDateTime submissionLastChanged;
+		public transient Future<List<PipelineResult>> resultFuture;
+
+		public QueuedAnswerClassRun(int taskId, ZonedDateTime submissionLastChanged, Future<List<PipelineResult>> resultFuture) {
+			this.taskId = taskId;
+			this.submissionLastChanged = submissionLastChanged;
+			this.resultFuture = resultFuture;
 		}
 	}
 }

@@ -68,6 +68,10 @@ public class ShowAnswerClassResultsView extends HttpServlet {
 
 		Map<Integer, AnswerClassResult> resultByAnswerClassId = results.stream().collect(Collectors.toMap(result -> result.getAnswerClass().getId(), Function.identity()));
 		boolean canRun = task.getDeadline().isAfter(ZonedDateTime.now()) && !(task.isAllowPrematureSubmissionClosing() && submission.isClosed());
+		// The official (batch/automatic) results are only meaningful together with the grading,
+		// so - like on the task page - they stay hidden until the task's Punktedatum
+		// (task.getShowPoints()), not already right after the deadline.
+		boolean pointsVisible = task.getShowPoints() != null && task.getShowPoints().isBefore(ZonedDateTime.now());
 		@SuppressWarnings("unchecked")
 		Map<Integer, AnswerClassResultStatus> preview = canRun ? (Map<Integer, AnswerClassResultStatus>) request.getAttribute("answerClassPreview") : null;
 
@@ -79,7 +83,7 @@ public class ShowAnswerClassResultsView extends HttpServlet {
 		if (visibleAnswerClasses.isEmpty()) {
 			out.println("<p>Für diese Aufgabe sind aktuell keine Antwortklassen für Studierende verfügbar.</p>");
 		} else {
-			if (preview != null || !canRun) {
+			if (preview != null || (!canRun && pointsVisible)) {
 				out.println("<table>");
 				out.println("<tr><th>Titel</th><th>Beschreibung</th><th>Ergebnis</th></tr>");
 				for (AnswerClass answerClass : visibleAnswerClasses) {
@@ -88,7 +92,7 @@ public class ShowAnswerClassResultsView extends HttpServlet {
 					out.println("<th>" + Util.escapeHTML(answerClass.getTitle()) + "</th>");
 					out.println("<td>" + Util.textToHTML(answerClass.getDescription() == null ? "" : answerClass.getDescription()) + "</td>");
 					out.println("<td>");
-					out.println("<b>" + ShowAnswerClassResult.statusLabel(status) + "</b>");
+					out.println("<b>" + ShowAnswerClassResult.coloredStatusLabel(status) + "</b>");
 					out.println("</td>");
 					out.println("</tr>");
 				}

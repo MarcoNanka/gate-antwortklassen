@@ -354,47 +354,68 @@ public class ShowSubmissionView extends HttpServlet {
 			if (probeColumn) {
 				out.println("<p>Der Probelauf wird nicht gespeichert und nicht Studierenden angezeigt. Die Spalte Gespeichert füllt der Batchlauf nach der Deadline.</p>");
 			}
+			boolean manualGradingOpen = task.getDeadline().isBefore(ZonedDateTime.now()) || (task.isAllowPrematureSubmissionClosing() && submission.isClosed());
+			// The "Gespeichert" column is only meaningful once there is something to show (a
+			// batch/manual result already stored, or a manual grading form that can be used right
+			// now); otherwise every row would just read "noch nicht geprüft", which does not help
+			// the tutor (see conversation with Prof. Strickroth).
+			boolean gespeichertColumn = false;
+			for (AnswerClass answerClass : answerClasses) {
+				boolean manual = AnswerClassToEvaluate.MANUAL_DETECTION_TYPE.equals(answerClass.getDetectionType());
+				if (answerClassResultByAnswerClassId.containsKey(answerClass.getId()) || (manual && manualGradingOpen)) {
+					gespeichertColumn = true;
+					break;
+				}
+			}
 			out.println("<table>");
 			out.println("<tr>");
 			out.println("<th>Antwortklasse</th>");
-			out.println("<th>Gespeichert</th>");
+			if (gespeichertColumn) {
+				out.println("<th>Gespeichert</th>");
+			}
 			if (probeColumn) {
 				out.println("<th>Probelauf (nur für Tutor sichtbar)</th>");
 			}
 			out.println("</tr>");
-			boolean manualGradingOpen = task.getDeadline().isBefore(ZonedDateTime.now()) || (task.isAllowPrematureSubmissionClosing() && submission.isClosed());
 			for (AnswerClass answerClass : answerClasses) {
 				AnswerClassResult answerClassResult = answerClassResultByAnswerClassId.get(answerClass.getId());
 				boolean manual = AnswerClassToEvaluate.MANUAL_DETECTION_TYPE.equals(answerClass.getDetectionType());
 				out.println("<tr>");
 				out.println("<td>" + Util.escapeHTML(answerClass.getTitle()) + "</td>");
-				out.println("<td>");
-				out.println(ShowAnswerClassResult.statusLabel(answerClassResult == null ? null : answerClassResult.getStatus()));
-				boolean manualForm = manual && manualGradingOpen;
-				if (!manualForm && answerClassResult != null && answerClassResult.getDetails() != null && !answerClassResult.getDetails().isEmpty()) {
-					out.println("<pre>" + Util.escapeHTML(answerClassResult.getDetails()) + "</pre>");
-				}
-				if (manualForm) {
-					out.println("<form method=post action=\"" + Util.generateHTMLLink(PerformTutorAnswerClasses.class.getSimpleName(), response) + "\">");
-					out.println("<input type=hidden name=sid value=" + submission.getSubmissionid() + ">");
-					out.println("<input type=hidden name=answerclassid value=" + answerClass.getId() + ">");
-					out.println("<select name=status size=1>");
-					for (AnswerClassResultStatus status : AnswerClassResultStatus.values()) {
-						out.println("<option value=" + status.name() + (answerClassResult != null && answerClassResult.getStatus() == status ? " selected" : "") + ">" + ShowAnswerClassResult.statusLabel(status) + "</option>");
+				if (gespeichertColumn) {
+					out.println("<td>");
+					if (answerClassResult != null) {
+						out.println(ShowAnswerClassResult.coloredStatusLabel(answerClassResult.getStatus()));
+					} else if (!manual) {
+						out.println("—");
 					}
-					out.println("</select> <input type=text name=details placeholder=\"Anmerkung\" value=\"" + (answerClassResult == null ? "" : Util.escapeHTML(answerClassResult.getDetails())) + "\">");
-					out.println(" <input type=submit value=\"manuell setzen\">");
-					out.println("</form>");
-				} else if (manual) {
-					out.println("<br>Manuelle Bewertung nach Ablauf der Deadline oder nach endgültiger Abgabe.");
+					boolean manualForm = manual && manualGradingOpen;
+					if (!manualForm && answerClassResult != null && answerClassResult.getDetails() != null && !answerClassResult.getDetails().isEmpty()) {
+						out.println("<pre>" + Util.escapeHTML(answerClassResult.getDetails()) + "</pre>");
+					}
+					if (manualForm) {
+						out.println("<form method=post action=\"" + Util.generateHTMLLink(PerformTutorAnswerClasses.class.getSimpleName(), response) + "\">");
+						out.println("<input type=hidden name=sid value=" + submission.getSubmissionid() + ">");
+						out.println("<input type=hidden name=answerclassid value=" + answerClass.getId() + ">");
+						out.println("<select name=status size=1>");
+						for (AnswerClassResultStatus status : AnswerClassResultStatus.values()) {
+							out.println("<option value=" + status.name() + (answerClassResult != null && answerClassResult.getStatus() == status ? " selected" : "") + ">" + ShowAnswerClassResult.statusLabel(status) + "</option>");
+						}
+						out.println("</select><br>");
+						out.println("<b>Anmerkung:</b><br><textarea cols=80 rows=8 name=details>" + (answerClassResult == null ? "" : Util.escapeHTML(answerClassResult.getDetails())) + "</textarea><br>");
+						out.println("<input type=submit value=\"manuell setzen\">");
+						out.println("</form>");
+					} else if (manual) {
+						out.println("<br>Manuelle Bewertung nach Ablauf der Deadline oder nach endgültiger Abgabe.");
+					}
+					out.println("</td>");
 				}
-				out.println("</td>");
 				if (probeColumn) {
 					out.println("<td>");
 					if (manual || answerClassPreview == null || !answerClassPreview.containsKey(answerClass.getId())) {
 						out.println("—");
 					} else {
-						out.println(ShowAnswerClassResult.statusLabel(answerClassPreview.get(answerClass.getId()).getStatus()));
+						out.println(ShowAnswerClassResult.coloredStatusLabel(answerClassPreview.get(answerClass.getId()).getStatus()));
 					}
 					out.println("</td>");
 				}

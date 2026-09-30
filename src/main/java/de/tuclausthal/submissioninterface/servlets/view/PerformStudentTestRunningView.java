@@ -33,7 +33,9 @@ import de.tuclausthal.submissioninterface.template.TemplateFactory;
 import de.tuclausthal.submissioninterface.util.Util;
 
 /**
- * View-Servlet for displaying the queuing status of a running test
+ * View-Servlet for displaying the queuing status of a running background job that was submitted
+ * to {@code LocalExecutor} (classic {@code Test}s and, reusing the same pool/polling pattern,
+ * answer-class preview runs; see {@code answerclasses.AnswerClassExecutor}).
  * @author Sven Strickroth
  */
 @GATEView
@@ -44,6 +46,16 @@ public class PerformStudentTestRunningView extends HttpServlet {
 	public void doGet(HttpServletRequest request, HttpServletResponse response) throws IOException, ServletException {
 		String url = (String) request.getAttribute("refreshurl");
 		int redirectTime = (Integer) request.getAttribute("redirectTime");
+		// Optional overrides for callers other than the classic Test flow (e.g. answer classes);
+		// default to the original wording so existing behavior is unchanged.
+		String pageTitle = (String) request.getAttribute("runningPageTitle");
+		if (pageTitle == null) {
+			pageTitle = "Testen...";
+		}
+		String runningMessage = (String) request.getAttribute("runningMessage");
+		if (runningMessage == null) {
+			runningMessage = "Der Test wird im Hintergrund ausgeführt. Bitte warten.<br>";
+		}
 
 		Template template = TemplateFactory.getTemplate(request, response);
 
@@ -52,10 +64,10 @@ public class PerformStudentTestRunningView extends HttpServlet {
 
 		Task task = (Task) request.getAttribute("task");
 
-		template.printTemplateHeader("Testen...", task);
+		template.printTemplateHeader(pageTitle, task);
 
 		PrintWriter out = response.getWriter();
-		out.println("Der Test wird im Hintergrund ausgeführt. Bitte warten.<br>");
+		out.println(runningMessage);
 		out.println("Sollte diese Seite nicht innerhalb von " + redirectTime + " Sekunden neu geladen werden, <a href=\"" + Util.escapeHTML(url) + "\">hier</a> gehts weiter.");
 
 		template.printTemplateFooter();
