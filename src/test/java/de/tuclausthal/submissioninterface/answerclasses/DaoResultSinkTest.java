@@ -36,6 +36,7 @@ import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResul
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResultSource;
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResultStatus;
 import de.tuclausthal.submissioninterface.persistence.datamodel.Submission;
+import de.tuclausthal.submissioninterface.persistence.datamodel.User;
 
 /**
  * Integration test for {@link DaoResultSink}, against the fixtures from {@code test-data.sql}
@@ -88,6 +89,29 @@ class DaoResultSinkTest extends BasicTest {
 			assertEquals(AnswerClassResultStatus.MATCHED, after.getStatus());
 			assertEquals("compiled successfully", after.getDetails());
 			assertEquals(AnswerClassResultSource.AUTOMATIC, after.getSource());
+		} finally {
+			tx.rollback();
+		}
+	}
+
+	@Test
+	void leavesTutorGradeInPlace() {
+		Transaction tx = session.beginTransaction();
+		try {
+			AnswerClass whileLoop = DAOFactory.AnswerClassDAOIf(session).getAnswerClass(2);
+			Submission submission = DAOFactory.SubmissionDAOIf(session).getSubmission(7);
+			User tutor = DAOFactory.UserDAOIf(session).getUser(3);
+			DAOFactory.AnswerClassResultDAOIf(session).storeResult(whileLoop, submission, AnswerClassResultStatus.NOT_MATCHED, "nicht in O(n)", AnswerClassResultSource.MANUAL, tutor);
+
+			DaoResultSink sink = new DaoResultSink(session, submission, List.of(whileLoop));
+			sink.store(new PipelineResult(whileLoop.getId(), AnswerClassResultStatus.PENDING, null, AnswerClassResultSource.MANUAL));
+			sink.store(new PipelineResult(whileLoop.getId(), AnswerClassResultStatus.SKIPPED, "prerequisites not satisfied", AnswerClassResultSource.AUTOMATIC));
+
+			AnswerClassResult stored = DAOFactory.AnswerClassResultDAOIf(session).getResult(whileLoop, submission);
+			assertEquals(AnswerClassResultStatus.NOT_MATCHED, stored.getStatus());
+			assertEquals("nicht in O(n)", stored.getDetails());
+			assertEquals(AnswerClassResultSource.MANUAL, stored.getSource());
+			assertEquals(tutor.getUid(), stored.getEvaluatedBy().getUid());
 		} finally {
 			tx.rollback();
 		}

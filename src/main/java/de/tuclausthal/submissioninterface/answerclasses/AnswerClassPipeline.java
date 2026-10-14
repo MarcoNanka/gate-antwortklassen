@@ -43,11 +43,25 @@ public class AnswerClassPipeline {
 	 * @return unmodifiable list of stored results (same order as sink calls)
 	 */
 	public List<PipelineResult> run(PipelineTrigger trigger, boolean hasSubmissionFiles, List<AnswerClassToEvaluate> answerClasses, LanguageProvider languageProvider, CheckerRegistry checkerRegistry, ResultSink resultSink) throws Exception {
+		return run(trigger, hasSubmissionFiles, answerClasses, languageProvider, checkerRegistry, resultSink, Map.of());
+	}
+
+	/**
+	 * Execute one pipeline run.
+	 *
+	 * @param preservedManualStatus tutor grades already stored for manual answer classes
+	 *        (answer-class id to status). Those classes are not written again; their status is
+	 *        only kept so later classes can use it as a prerequisite. Empty for every run that
+	 *        does not persist a batch.
+	 * @return unmodifiable list of stored results (same order as sink calls)
+	 */
+	public List<PipelineResult> run(PipelineTrigger trigger, boolean hasSubmissionFiles, List<AnswerClassToEvaluate> answerClasses, LanguageProvider languageProvider, CheckerRegistry checkerRegistry, ResultSink resultSink, Map<Integer, AnswerClassResultStatus> preservedManualStatus) throws Exception {
 		Objects.requireNonNull(trigger, "trigger");
 		Objects.requireNonNull(answerClasses, "answerClasses");
 		Objects.requireNonNull(languageProvider, "languageProvider");
 		Objects.requireNonNull(checkerRegistry, "checkerRegistry");
 		Objects.requireNonNull(resultSink, "resultSink");
+		Objects.requireNonNull(preservedManualStatus, "preservedManualStatus");
 
 		if (!hasSubmissionFiles) {
 			return List.of();
@@ -66,6 +80,16 @@ public class AnswerClassPipeline {
 			for (AnswerClassToEvaluate answerClass : evaluationOrder) {
 				if (!isVisibleForTrigger(trigger, answerClass)) {
 					continue;
+				}
+
+				// A tutor grade is the result. The batch must not replace it with PENDING or
+				// SKIPPED, and a class that depends on this one has to see the tutor's status.
+				if (answerClass.isManual()) {
+					AnswerClassResultStatus preserved = preservedManualStatus.get(answerClass.getId());
+					if (preserved != null) {
+						statusByAnswerClassId.put(answerClass.getId(), preserved);
+						continue;
+					}
 				}
 
 				if (!prerequisitesSatisfied(answerClass, statusByAnswerClassId)) {

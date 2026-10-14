@@ -28,11 +28,13 @@ import org.hibernate.Session;
 
 import de.tuclausthal.submissioninterface.persistence.dao.DAOFactory;
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClass;
+import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResult;
 import de.tuclausthal.submissioninterface.persistence.datamodel.Submission;
 
 /**
  * Persists pipeline results through AnswerClassResultDAO.
  * The caller owns the Hibernate transaction. evaluatedBy stays empty here.
+ * A row a tutor already graded ({@code evaluatedBy} set) is left as it is.
  */
 public class DaoResultSink implements ResultSink {
 	private final Session session;
@@ -58,6 +60,10 @@ public class DaoResultSink implements ResultSink {
 		AnswerClass answerClass = answerClassesById.get(result.getAnswerClassId());
 		if (answerClass == null) {
 			throw new IllegalStateException("Unknown answer class id in pipeline result: " + result.getAnswerClassId());
+		}
+		AnswerClassResult existing = DAOFactory.AnswerClassResultDAOIf(session).getResult(answerClass, submission);
+		if (existing != null && existing.getEvaluatedBy() != null) {
+			return;
 		}
 		DAOFactory.AnswerClassResultDAOIf(session).storeResult(answerClass, submission, result.getStatus(), result.getDetails(), result.getSource(), null);
 	}

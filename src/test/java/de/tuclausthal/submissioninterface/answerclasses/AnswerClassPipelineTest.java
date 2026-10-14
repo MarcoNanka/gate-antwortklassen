@@ -24,6 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -121,6 +122,22 @@ class AnswerClassPipelineTest {
 		assertEquals(AnswerClassResultStatus.NOT_MATCHED, results.get(0).getStatus());
 		assertEquals(AnswerClassResultStatus.SKIPPED, results.get(1).getStatus());
 		assertEquals(AnswerClassResultSource.AUTOMATIC, results.get(1).getSource());
+	}
+
+	@Test
+	void batchKeepsTutorGradeAndUsesItAsPrerequisite() throws Exception {
+		FakeLanguageProvider provider = new FakeLanguageProvider(ArtifactType.AST);
+		CheckerRegistry registry = registryWithAstChecker("WHILE_LOOP", CheckerOutcome.matched("while found"));
+
+		AnswerClassToEvaluate manual = new AnswerClassToEvaluate(1, AnswerClassToEvaluate.MANUAL_DETECTION_TYPE, 1);
+		AnswerClassToEvaluate whileLoop = new AnswerClassToEvaluate(2, "WHILE_LOOP", 3, List.of(1));
+
+		List<PipelineResult> results = pipeline.run(PipelineTrigger.BATCH, true, List.of(manual, whileLoop), provider, registry, sink, Map.of(1, AnswerClassResultStatus.MATCHED));
+
+		assertEquals(1, results.size());
+		assertEquals(2, results.get(0).getAnswerClassId());
+		assertEquals(AnswerClassResultStatus.MATCHED, results.get(0).getStatus());
+		assertEquals(AnswerClassResultSource.AUTOMATIC, results.get(0).getSource());
 	}
 
 	@Test

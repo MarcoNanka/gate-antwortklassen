@@ -19,7 +19,9 @@
 package de.tuclausthal.submissioninterface.answerclasses;
 
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 import org.hibernate.Session;
@@ -28,6 +30,9 @@ import de.tuclausthal.submissioninterface.answerclasses.java.JavaCheckerRegistry
 import de.tuclausthal.submissioninterface.answerclasses.java.JavaLanguageProvider;
 import de.tuclausthal.submissioninterface.persistence.dao.DAOFactory;
 import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClass;
+import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResult;
+import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResultSource;
+import de.tuclausthal.submissioninterface.persistence.datamodel.AnswerClassResultStatus;
 import de.tuclausthal.submissioninterface.persistence.datamodel.ProgrammingLanguage;
 import de.tuclausthal.submissioninterface.persistence.datamodel.Submission;
 import de.tuclausthal.submissioninterface.persistence.datamodel.Task;
@@ -93,8 +98,23 @@ public class AnswerClassRunner {
 		ResultSink resultSink = persist ? new DaoResultSink(session, submission, answerClasses) : ignored -> {
 			// Preview is shown once and must not overwrite answerclassresults.
 		};
+		Map<Integer, AnswerClassResultStatus> preservedManualStatus = persist && trigger == PipelineTrigger.BATCH ? tutorGradedManualStatus(submission) : Map.of();
 
-		return new AnswerClassPipeline().run(trigger, hasSubmissionFiles, answerClassesToEvaluate, languageProvider, checkerRegistry, resultSink);
+		return new AnswerClassPipeline().run(trigger, hasSubmissionFiles, answerClassesToEvaluate, languageProvider, checkerRegistry, resultSink, preservedManualStatus);
+	}
+
+	/**
+	 * Manual answer classes a tutor already graded. The batch run keeps these rows and only
+	 * reuses the status when another answer class lists them as a prerequisite.
+	 */
+	private Map<Integer, AnswerClassResultStatus> tutorGradedManualStatus(Submission submission) {
+		Map<Integer, AnswerClassResultStatus> preserved = new HashMap<>();
+		for (AnswerClassResult result : DAOFactory.AnswerClassResultDAOIf(session).getResultsForSubmission(submission)) {
+			if (result.getSource() == AnswerClassResultSource.MANUAL && result.getEvaluatedBy() != null) {
+				preserved.put(result.getAnswerClass().getId(), result.getStatus());
+			}
+		}
+		return preserved;
 	}
 
 	/**
